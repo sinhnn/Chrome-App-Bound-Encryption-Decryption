@@ -167,5 +167,16 @@ void PipeServer_EXT::WaitAck(const Payload::request_msg &request, bool verbose, 
 
 void PipeServer_EXT::SendAck(const Payload::request_msg &request, bool verbose, uint32_t timeout)
 {
+    uint32_t crc32 = Payload::calculate_crc32(request.payload, request.payload_length);
+    DWORD written = 0;
+    if (!WriteFile(m_hPipe.get(), &crc32, sizeof(crc32), &written, nullptr)) {
+        throw std::runtime_error("WriteFile failed for ACK");
+    }
+
+    if (written != sizeof(crc32)) {
+        throw std::runtime_error("Incomplete write for ACK");
+    }
+
+}
 
 } // namespace Injector

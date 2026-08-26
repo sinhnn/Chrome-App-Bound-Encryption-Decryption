@@ -61,6 +61,7 @@ namespace Injector {
         uintptr_t entry = reinterpret_cast<uintptr_t>(remoteBase) + offset;
         HANDLE hThread = nullptr;
 
+        // NOTE: calling NtCreateThreadEx_syscall directly to avoid detection by AV/EDR solutions that hook CreateRemoteThread
         m_console.Debug("Creating remote thread via syscall...");
         status = NtCreateThreadEx_syscall(&hThread, THREAD_ALL_ACCESS, nullptr, m_process.GetProcessHandle(),
                                           (LPTHREAD_START_ROUTINE)entry, remotePipeName, 0, 0, 0, 0, nullptr);

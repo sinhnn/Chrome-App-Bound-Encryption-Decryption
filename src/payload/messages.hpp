@@ -1,10 +1,11 @@
 #pragma once
 
-#include <cstdint>
 #include <string>
 #include <vector>
 #include <map>
 #include <typeindex>
+#include <typeinfo>
+#include <cstring>
 #include <typeinfo>
 
 
@@ -14,8 +15,8 @@ namespace Payload {
         virtual ~ISerializable() = default;
         virtual std::pair<char*, uint32_t> Serialize() const = 0;
         virtual uint32_t size() const = 0;
-        virtual int SerializeTo(char* dst, int& written) const = 0;
-        virtual void Deserialize(const std::vector<uint8_t>& data) = 0;
+        virtual int SerializeTo(char* dst, uint32_t& written) const = 0;
+        // virtual void Deserialize(const std::vector<uint8_t>& data) = 0;
     };
 
     struct Message {

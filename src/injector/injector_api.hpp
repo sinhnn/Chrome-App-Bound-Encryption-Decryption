@@ -2,6 +2,11 @@
 
 #include "../payload/messages.hpp"
 #include "pipe_server.hpp"
+#include <windows.h>
+
+
+#define DLL_EXPORT __declspec(dllexport)
+#define DLL_IMPORT __declspec(dllimport)
 
 namespace Injector {
 
@@ -17,6 +22,8 @@ class PipeServer_EXT : public PipeServer
 };
 
 
-int Process(Payload::Request& request);
+extern "C" {
+    DLL_EXPORT int Process(Payload::Request& request);
+}
 
 } // namespace Injector
