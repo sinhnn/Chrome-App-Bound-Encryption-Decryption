@@ -71,5 +71,16 @@
         "cwctype": "cpp",
         "functional": "cpp",
         "random": "cpp"
+    },
+    "terminal.integrated.defaultProfile.windows": "Visual Studio Developer Prompt",
+    "terminal.integrated.profiles.windows": {
+        "Visual Studio Developer Prompt": {
+            "path": "cmd.exe",
+            "args": [
+                "/k",
+                "C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\Common7\\Tools\\VsDevCmd.bat",
+                "-arch=x64"
+            ]
+        }
     }
 }

@@ -157,7 +157,8 @@ if "%VSCMD_ARG_TGT_ARCH%"=="arm64" (
 )
 set "CFLAGS_COMMON_DLL=/D_USRDLL /D_WINDLL /MT"
 
-cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector_main.cpp" /Fo"%BUILD_DIR%\injector_main.obj"
+cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector_api.cpp" /Fo"%BUILD_DIR%\injector_api.obj"
+cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\payload\messages.cpp" /Fo"%BUILD_DIR%\messages.obj"
 cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\browser_discovery.cpp" /Fo"%BUILD_DIR%\browser_discovery.obj"
 cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\browser_terminator.cpp" /Fo"%BUILD_DIR%\browser_terminator.obj"
 cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\process_manager.cpp" /Fo"%BUILD_DIR%\process_manager.obj"
@@ -166,7 +167,7 @@ cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR
 cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\sys\internal_api.cpp" /Fo"%BUILD_DIR%\internal_api.obj"
 
 link %LFLAGS_COMMON_DLL% %LFLAGS_COMMON% %LFLAGS_MERGE% /OUT:"%BUILD_DIR%\lib.dll" ^
-    "%BUILD_DIR%\injector_main.obj" "%BUILD_DIR%\browser_discovery.obj" ^
+    "%BUILD_DIR%\injector_api.obj" "%BUILD_DIR%\messages.obj" "%BUILD_DIR%\browser_discovery.obj" ^
     "%BUILD_DIR%\browser_terminator.obj" "%BUILD_DIR%\process_manager.obj" ^
     "%BUILD_DIR%\pipe_server.obj" "%BUILD_DIR%\injector.obj" ^
     "%BUILD_DIR%\internal_api.obj" "%BUILD_DIR%\chacha20.obj" ^

@@ -1,6 +1,17 @@
+
+
 #include "injector_api.hpp"
+#include <windows.h>
+#include "../core/common.hpp"
+#include "../core/console.hpp"
+#include "../sys/internal_api.hpp"
+#include "browser_discovery.hpp"
+#include "browser_terminator.hpp"
+#include "process_manager.hpp"
+#include "pipe_server.hpp"
+#include "injector.hpp"
+#include <iostream>
 #include "../payload/messages.hpp"
-#include <windows>
 
 namespace Injector {
 
@@ -9,7 +20,7 @@ static const uint32_t kMaxMessageSize = 4096; // Define a maximum message size f
 int Process(Payload::Request& request)
 {
     BrowserInfo browser;
-    Core::Console console;
+    Core::Console console(true);
     bool killFirst = true;
 
     // get message type from request
@@ -47,7 +58,7 @@ int Process(Payload::Request& request)
 
         console.Debug("Awaiting payload connection...");
         // TODO: Add timeout handling for WaitForClient
-        pipe.WaitForClient();
+        pipe.WaitForClient(true, 3000); // 3 seconds timeout
         console.Debug("  [+] Payload connected");
 
         // Send the request and wait for the response
@@ -177,6 +188,25 @@ void PipeServer_EXT::SendAck(const Payload::request_msg &request, bool verbose, 
         throw std::runtime_error("Incomplete write for ACK");
     }
 
+}
+
+void PipeServer_EXT::WaitForClient(bool verbose, uint32_t timeout)
+{
+    uint32_t deadline = GetTickCount() + timeout;
+    while (GetTickCount() < deadline) {
+        DWORD available = 0;
+        if (!PeekNamedPipe(m_hPipe.get(), nullptr, 0, nullptr, &available, nullptr)) {
+            if (GetLastError() == ERROR_BROKEN_PIPE) break;
+            throw std::runtime_error("PeekNamedPipe failed");
+        }
+
+        if (available > 0) {
+            return; // Client connected
+        }
+
+        Sleep(100);
+    }
+    throw std::runtime_error("Timeout waiting for client");
 }
 
 } // namespace Injector

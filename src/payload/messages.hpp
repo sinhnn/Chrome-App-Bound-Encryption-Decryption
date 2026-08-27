@@ -10,6 +10,10 @@
 
 
 namespace Payload {
+
+    extern const std::vector<uint8_t> s_SOS_vec;
+    extern const std::vector<uint8_t> s_EOS_vec;
+
     class ISerializable {
     public:
         virtual ~ISerializable() = default;
@@ -55,6 +59,7 @@ namespace Payload {
     };
 
     class request_msg : public ISerializable {
+        public:
         // Command identifier for the request, which leads to how to serialize/deserialize the payload
         uint32_t command_id;
         // Payload size
@@ -83,11 +88,6 @@ namespace Payload {
             return 0; // Return 0 for success
         }
     };
-
-    static std::string s_SOS = "__DLL_RESPONSE_START_SIGNAL__";
-    static std::string s_EOS = "__DLL_RESPONSE_END_SIGNAL__";
-    static const std::vector<uint8_t> s_SOS_vec(s_SOS.begin(), s_SOS.end());
-    static const std::vector<uint8_t> s_EOS_vec(s_EOS.begin(), s_EOS.end());
 
     class response_msg : public ISerializable {
         public:

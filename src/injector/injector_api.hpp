@@ -19,6 +19,7 @@ class PipeServer_EXT : public PipeServer
         void WaitResponse(const Payload::request_msg& request, Payload::response_msg& response, bool verbose, uint32_t timeout);
         void WaitAck(const Payload::request_msg& request, bool verbose, uint32_t timeout);
         void SendAck(const Payload::request_msg& request, bool verbose, uint32_t timeout);
+        void WaitForClient(bool verbose, uint32_t timeout);
 };
 
 

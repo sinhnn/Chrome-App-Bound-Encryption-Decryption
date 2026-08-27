@@ -9,6 +9,10 @@
 namespace Payload {
     // TODO: must locks if support multi-threading
     static int s_next_type_idx = 0;
+    std::string s_SOS = "__SOS__";
+    std::string s_EOS = "__EOS__";
+    const std::vector<uint8_t> s_SOS_vec(s_SOS.begin(), s_SOS.end());
+    const std::vector<uint8_t> s_EOS_vec(s_EOS.begin(), s_EOS.end());
 
     // Couple maps to maintain the bidirectional mapping between type_index and integer IDs
     static std::unordered_map<std::type_index, int> s_type_idx_map;
