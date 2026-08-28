@@ -24,7 +24,7 @@ int Process(Payload::Request& request)
     bool killFirst = true;
 
     // get message type from request
-    uint32_t message_type = request.request->command_id;
+    uint32_t message_type = request.request.command_id;
     try {
         if (killFirst) {
             console.Debug("Terminating browser processes...");
@@ -79,28 +79,29 @@ int Process(Payload::Request& request)
 
 int PipeServer_EXT::Send(Payload::Request& request, bool verbose)
 {
-    SendMessage(*request.request, verbose);
-    WaitResponse(*request.request, *request.response, verbose, 5000); // 5 seconds timeout
+    SendMessage(request.request, verbose);
+    WaitResponse(request.request, request.response, verbose, 5000); // 5 seconds timeout
     return 0;
 }
 
 void PipeServer_EXT::SendMessage(const Payload::request_msg &request, bool verbose)
 {
     DWORD written = 0;
-    uint32_t requestSize = request.size();
-    char* buffer = new char[Payload::calculate_pack_size(requestSize)];
-    memcpy(buffer, Payload::s_start_signal_vec.data(), Payload::s_start_signal_vec.size());
-    request.SerializeTo(buffer + Payload::s_start_signal_vec.size(), requestSize);
-    memcpy(buffer + Payload::s_start_signal_vec.size() + requestSize, Payload::s_end_signal_vec.data(), Payload::s_end_signal_vec.size());
+    size_t requestSize = request.size();
+    size_t packedSize = Payload::calculate_pack_size(requestSize);
+    char* buffer = new char[packedSize];
+    memcpy(buffer, Payload::s_SOS_vec.data(), Payload::s_SOS_vec.size());
+    request.SerializeTo(buffer + Payload::s_SOS_vec.size(), requestSize);
+    memcpy(buffer + Payload::s_SOS_vec.size() + requestSize, Payload::s_EOS_vec.data(), Payload::s_EOS_vec.size());
 
-    if (!WriteFile(m_hPipe.get(), packed.first, static_cast<DWORD>(packed.second), &written, nullptr)) {
+    if (!WriteFile(m_hPipe.get(), buffer, static_cast<DWORD>(packedSize), &written, nullptr)) {
         throw std::runtime_error("WriteFile failed");
     }
 
-    if (written != packed.second) {
+    if (written != packedSize) {
         throw std::runtime_error("Incomplete write to pipe");
     }
-    delete[] packed.first;
+    delete[] buffer;
 }
 
 
@@ -111,7 +112,7 @@ void PipeServer_EXT::WaitResponse(const Payload::request_msg &request, Payload::
     DWORD deadLine = startTime + timeout;
     DWORD bytesRead = 0;
     char buffer[kMaxMessageSize]; // Adjust size as needed
-    TemporalBuffer tempBuffer;
+    // TemporalBuffer tempBuffer;
 
     while (GetTickCount() < deadLine) {
         // TODO: should check for start signature and end signature in the response buffer to determine if the response is complete

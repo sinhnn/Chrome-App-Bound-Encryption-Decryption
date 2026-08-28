@@ -31,7 +31,7 @@ namespace Injector {
         std::wstring GetName() const { return m_pipeName; }
         ExtractionStats GetStats() const { return m_stats; }
 
-    private:
+    protected:
         void Write(const std::string& msg);
         std::wstring GenerateName(const std::wstring& browserType);
 

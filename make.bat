@@ -151,28 +151,35 @@ goto :eof
 :compile dll
 echo [6/5] Compiling DLL...
 if "%VSCMD_ARG_TGT_ARCH%"=="arm64" (
-    armasm64.exe -nologo "%SRC_DIR%\sys\syscall_trampoline_arm64.asm" -o "%BUILD_DIR%\syscall_trampoline.obj"
+    armasm64.exe -nologo "%SRC_DIR%\sys\syscall_trampoline_arm64.asm" -o "%BUILD_DIR%\syscall_trampoline.o"
 ) else (
-    ml64.exe /nologo /c /Fo"%BUILD_DIR%\syscall_trampoline.obj" "%SRC_DIR%\sys\syscall_trampoline_x64.asm"
+    ml64.exe /nologo /c /Fo"%BUILD_DIR%\syscall_trampoline.o" "%SRC_DIR%\sys\syscall_trampoline_x64.asm"
 )
-set "CFLAGS_COMMON_DLL=/D_USRDLL /D_WINDLL /MT"
 
-cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector_api.cpp" /Fo"%BUILD_DIR%\injector_api.obj"
-cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\payload\messages.cpp" /Fo"%BUILD_DIR%\messages.obj"
-cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\browser_discovery.cpp" /Fo"%BUILD_DIR%\browser_discovery.obj"
-cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\browser_terminator.cpp" /Fo"%BUILD_DIR%\browser_terminator.obj"
-cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\process_manager.cpp" /Fo"%BUILD_DIR%\process_manager.obj"
-cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\pipe_server.cpp" /Fo"%BUILD_DIR%\pipe_server.obj"
-cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector.cpp" /Fo"%BUILD_DIR%\injector.obj"
-cl %CFLAGS_COMMON_DLL% %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\sys\internal_api.cpp" /Fo"%BUILD_DIR%\internal_api.obj"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector_api.cpp" /Fo"%BUILD_DIR%\injector_api.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\payload\messages.cpp" /Fo"%BUILD_DIR%\messages.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\browser_discovery.cpp" /Fo"%BUILD_DIR%\browser_discovery.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\browser_terminator.cpp" /Fo"%BUILD_DIR%\browser_terminator.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\process_manager.cpp" /Fo"%BUILD_DIR%\process_manager.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\pipe_server.cpp" /Fo"%BUILD_DIR%\pipe_server.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector.cpp" /Fo"%BUILD_DIR%\injector.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\sys\internal_api.cpp" /Fo"%BUILD_DIR%\internal_api.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\crypto\chacha20.cpp" /Fo"%BUILD_DIR%\chacha20.o"
 
-link %LFLAGS_COMMON_DLL% %LFLAGS_COMMON% %LFLAGS_MERGE% /OUT:"%BUILD_DIR%\lib.dll" ^
-    "%BUILD_DIR%\injector_api.obj" "%BUILD_DIR%\messages.obj" "%BUILD_DIR%\browser_discovery.obj" ^
-    "%BUILD_DIR%\browser_terminator.obj" "%BUILD_DIR%\process_manager.obj" ^
-    "%BUILD_DIR%\pipe_server.obj" "%BUILD_DIR%\injector.obj" ^
-    "%BUILD_DIR%\internal_api.obj" "%BUILD_DIR%\chacha20.obj" ^
-    "%BUILD_DIR%\syscall_trampoline.obj" ^
+link %LFLAGS_COMMON_DLL% %LFLAGS_COMMON% %LFLAGS_MERGE% /DLL /OUT:"%BUILD_DIR%\lib.dll" ^
+    "%BUILD_DIR%\injector_api.o" "%BUILD_DIR%\messages.o" "%BUILD_DIR%\browser_discovery.o" ^
+    "%BUILD_DIR%\browser_terminator.o" "%BUILD_DIR%\process_manager.o" ^
+    "%BUILD_DIR%\pipe_server.o" "%BUILD_DIR%\injector.o" ^
+    "%BUILD_DIR%\internal_api.o" "%BUILD_DIR%\chacha20.o" ^
+    "%BUILD_DIR%\syscall_trampoline.o" ^
     version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib
+
+:: compile to executable the examples/simple/main.cpp with lib.dll
+mkdir "%BUILD_DIR%\examples\simple" 2>nul
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\..\examples\simple\main.cpp" /Fo"%BUILD_DIR%\examples\simple\main.o"
+link %LFLAGS_COMMON% /OUT:"%BUILD_DIR%\examples\simple\main" "%BUILD_DIR%\examples\simple\main.o" "%BUILD_DIR%\lib.dll" version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib
+
+
 goto :eof
 :done
 

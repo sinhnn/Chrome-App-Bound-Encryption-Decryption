@@ -11,24 +11,32 @@
 
 namespace Payload {
 
+    enum class Command {
+        NONE,
+        DECRYPT_APP_BOUND_ENCRYPTED_KEY,
+        ENCRYPT_APP_BOUND_KEY,
+    };
+
     extern const std::vector<uint8_t> s_SOS_vec;
     extern const std::vector<uint8_t> s_EOS_vec;
+
+    uint32_t calculate_crc32(const char* data, size_t length);
 
     class ISerializable {
     public:
         virtual ~ISerializable() = default;
-        virtual std::pair<char*, uint32_t> Serialize() const = 0;
-        virtual uint32_t size() const = 0;
-        virtual int SerializeTo(char* dst, uint32_t& written) const = 0;
+        virtual std::pair<char*, size_t> Serialize() const = 0;
+        virtual size_t size() const = 0;
+        virtual int SerializeTo(char* dst, size_t& written) const = 0;
         // virtual void Deserialize(const std::vector<uint8_t>& data) = 0;
     };
 
     struct Message {
         uint32_t type;
-        uint32_t length;
+        size_t length;
         char* payload;
 
-        uint32_t size() const {
+        size_t size() const {
             return sizeof(type) + sizeof(length) + length;
         }
 
@@ -40,7 +48,7 @@ namespace Payload {
             return buffer;
         }
 
-        int SerializeTo(char* dst, uint32_t& written) const {
+        int SerializeTo(char* dst, size_t& written) const {
             std::memcpy(dst, &type, sizeof(type));
             std::memcpy(dst + sizeof(type), &length, sizeof(length));
             std::memcpy(dst + sizeof(type) + sizeof(length), payload, length);
@@ -63,12 +71,12 @@ namespace Payload {
         // Command identifier for the request, which leads to how to serialize/deserialize the payload
         uint32_t command_id;
         // Payload size
-        uint32_t payload_length;
+        size_t payload_length;
         // Payload data
         char* payload;
 
-        std::pair<char*, uint32_t> Serialize() const override {
-            uint32_t total_length = sizeof(command_id) + sizeof(payload_length) + payload_length;
+        std::pair<char*, size_t> Serialize() const override {
+            size_t total_length = sizeof(command_id) + sizeof(payload_length) + payload_length;
             char* buffer = new char[total_length];
             std::memcpy(buffer, &command_id, sizeof(command_id));
             std::memcpy(buffer + sizeof(command_id), &payload_length, sizeof(payload_length));
@@ -76,11 +84,11 @@ namespace Payload {
             return { buffer, total_length };
         }
 
-        uint32_t size() const override {
+        size_t size() const override {
             return sizeof(command_id) + sizeof(payload_length) + payload_length;
         }
 
-        int SerializeTo(char* dst, uint32_t& written) const override {
+        int SerializeTo(char* dst, size_t& written) const override {
             std::memcpy(dst, &command_id, sizeof(command_id));
             std::memcpy(dst + sizeof(command_id), &payload_length, sizeof(payload_length));
             std::memcpy(dst + sizeof(command_id) + sizeof(payload_length), payload, payload_length);
@@ -94,11 +102,11 @@ namespace Payload {
         response_msg() : status_code(0), payload_length(0), payload(nullptr) {}
 
         uint32_t status_code;
-        uint32_t payload_length;
+        size_t payload_length;
         char* payload;
 
-        std::pair<char*, uint32_t> Serialize() const override {
-            uint32_t total_length = sizeof(status_code) + sizeof(payload_length) + payload_length;
+        std::pair<char*, size_t> Serialize() const override {
+            size_t total_length = sizeof(status_code) + sizeof(payload_length) + payload_length;
             char* buffer = new char[total_length];
             std::memcpy(buffer, &status_code, sizeof(status_code));
             std::memcpy(buffer + sizeof(status_code), &payload_length, sizeof(payload_length));
@@ -106,11 +114,11 @@ namespace Payload {
             return { buffer, total_length };
         }
 
-        uint32_t size() const override {
+        size_t size() const override {
             return sizeof(status_code) + sizeof(payload_length) + payload_length;
         }
 
-        int SerializeTo(char* dst, uint32_t& written) const override {
+        int SerializeTo(char* dst, size_t& written) const override {
             std::memcpy(dst, &status_code, sizeof(status_code));
             std::memcpy(dst + sizeof(status_code), &payload_length, sizeof(payload_length));
             std::memcpy(dst + sizeof(status_code) + sizeof(payload_length), payload, payload_length);
@@ -125,17 +133,17 @@ namespace Payload {
 
         uint32_t ack_code;
 
-        std::pair<char*, uint32_t> Serialize() const override {
+        std::pair<char*, size_t> Serialize() const override {
             char* buffer = new char[sizeof(ack_code)];
             std::memcpy(buffer, &ack_code, sizeof(ack_code));
             return { buffer, sizeof(ack_code) };
         }
 
-        uint32_t size() const override {
+        size_t size() const override {
             return sizeof(ack_code);
         }
 
-        int SerializeTo(char* dst, uint32_t& written) const override {
+        int SerializeTo(char* dst, size_t& written) const override {
             std::memcpy(dst, &ack_code, sizeof(ack_code));
             written = size();
             return 0; // Return 0 for success
@@ -144,26 +152,26 @@ namespace Payload {
 
     class Request {
         public:
-        Request(const request_msg* req) : request(req)
+        Request(const request_msg& req) : request(req)
         {
-            response = new response_msg();
         }
 
-        const request_msg* request {nullptr};
-        response_msg* response {nullptr};
+        Request() : request(request_msg())
+        {
+        }
+
+        const request_msg& request;
+        response_msg response;
     };
 
-    uint32_t calculate_pack_size(uint32_t payload_length) {
-        return static_cast<uint32_t>(s_SOS_vec.size() + payload_length + s_EOS_vec.size());
-    }
+    size_t calculate_pack_size(size_t payload_length);
+    std::pair<char*, size_t> pack(const char* data, size_t length);
+    int pack_to(const char* data, size_t length, char* dst);
 
-    std::pair<char*, uint32_t> pack(const char* data, uint32_t length);
-    int pack_to(const char* data, uint32_t length, char* dst);
+    bool is_valid_msg(const char* buffer, size_t length);
 
-    bool is_valid_msg(const char* buffer, uint32_t length);
-
-    std::pair<char*, uint32_t> unpack(const char* buffer, uint32_t length);
-    uint32_t unpack(const char* buffer, uint32_t length, char** payload, uint32_t& payload_length);
-    uint32_t unpack_to(const char* buffer, uint32_t length, char* dst, uint32_t& payload_length);
+    std::pair<char*, size_t> unpack(const char* buffer, size_t length);
+    size_t unpack(const char* buffer, size_t length, char** payload, size_t& payload_length);
+    size_t unpack_to(const char* buffer, size_t length, char* dst, size_t& payload_length);
 
 } // namespace Payload

@@ -15,55 +15,86 @@ namespace Payload {
     const std::vector<uint8_t> s_EOS_vec(s_EOS.begin(), s_EOS.end());
 
     // Couple maps to maintain the bidirectional mapping between type_index and integer IDs
-    static std::unordered_map<std::type_index, int> s_type_idx_map;
-    static std::unordered_map<int, std::type_index> s_idx_type_map;
+    // static std::unordered_map<std::type_index, int> s_type_idx_map;
+    // static std::unordered_map<int, std::type_index> s_idx_type_map;
 
-    int register_type(std::type_index type_idx)
+    // int register_type(std::type_index type_idx)
+    // {
+    //     auto it = s_type_idx_map.find(type_idx);
+    //     if (it != s_type_idx_map.end())
+    //     {
+    //         return it->second;
+    //     }
+    //     else
+    //     {
+    //         int idx = s_next_type_idx++;
+    //         s_type_idx_map[type_idx] = idx;
+    //         s_idx_type_map[idx] = type_idx;
+    //         return idx;
+    //     }
+    // }
+
+    // int get_id(std::type_index type_idx)
+    // {
+    //     auto it = s_type_idx_map.find(type_idx);
+    //     if (it != s_type_idx_map.end())
+    //     {
+    //         return it->second;
+    //     }
+    //     else
+    //     {
+    //         return -1; // Type not registered
+    //     }
+    // }
+
+    // std::type_index get_type(int id)
+    // {
+    //     auto it = s_idx_type_map.find(id);
+    //     if (it != s_idx_type_map.end())
+    //     {
+    //         return it->second;
+    //     }
+    //     else
+    //     {
+    //         throw std::runtime_error("Type ID not registered");
+    //     }
+    // }
+
+    static uint32_t crc32_table[256];
+    static int table_initialized = 0;
+    uint32_t calculate_crc32(const char *data, size_t length)
     {
-        auto it = s_type_idx_map.find(type_idx);
-        if (it != s_type_idx_map.end())
-        {
-            return it->second;
+        if (!table_initialized) {
+            for (uint32_t i = 0; i < 256; ++i) {
+                uint32_t crc = i;
+                for (uint32_t j = 0; j < 8; ++j) {
+                    if (crc & 1)
+                        crc = (crc >> 1) ^ 0xEDB88320;
+                    else
+                        crc >>= 1;
+                }
+                crc32_table[i] = crc;
+            }
+            table_initialized = 1;
         }
-        else
-        {
-            int idx = s_next_type_idx++;
-            s_type_idx_map[type_idx] = idx;
-            s_idx_type_map[idx] = type_idx;
-            return idx;
+
+        uint32_t crc = 0xFFFFFFFF;
+        for (uint32_t i = 0; i < length; ++i) {
+            uint8_t byte = static_cast<uint8_t>(data[i]);
+            crc = (crc >> 8) ^ crc32_table[(crc ^ byte) & 0xFF];
         }
+        return crc ^ 0xFFFFFFFF;
     }
 
-    int get_id(std::type_index type_idx)
+    size_t calculate_pack_size(size_t payload_length)
     {
-        auto it = s_type_idx_map.find(type_idx);
-        if (it != s_type_idx_map.end())
-        {
-            return it->second;
-        }
-        else
-        {
-            return -1; // Type not registered
-        }
+        return s_SOS_vec.size() + payload_length + s_EOS_vec.size();
     }
 
-    std::type_index get_type(int id)
-    {
-        auto it = s_idx_type_map.find(id);
-        if (it != s_idx_type_map.end())
-        {
-            return it->second;
-        }
-        else
-        {
-            throw std::runtime_error("Type ID not registered");
-        }
-    }
-
-    std::pair<char*, uint32_t> pack(const char *data, uint32_t length)
+    std::pair<char *, size_t> pack(const char *data, size_t length)
     {
         // Pack the data with start and end signals
-        uint32_t total_length = s_SOS_vec.size() + length + s_EOS_vec.size();
+        size_t total_length = s_SOS_vec.size() + length + s_EOS_vec.size();
         char *buffer = new char[total_length];
 
         std::memcpy(buffer, s_SOS_vec.data(), s_SOS_vec.size());
@@ -73,7 +104,7 @@ namespace Payload {
         return {buffer, total_length};
     }
 
-    int pack_to(const char *data, uint32_t length, char *dst)
+    int pack_to(const char *data, size_t length, char *dst)
     {
         // Pack the data with start and end signals into the provided buffer
         std::memcpy(dst, s_SOS_vec.data(), s_SOS_vec.size());
@@ -82,7 +113,7 @@ namespace Payload {
         return 0;
     }
 
-    bool is_valid_msg(const char* buffer, uint32_t length)
+    bool is_valid_msg(const char* buffer, size_t length)
     {
         if (length < s_SOS_vec.size() + s_EOS_vec.size())
         {
@@ -104,7 +135,7 @@ namespace Payload {
         return true; // Valid message
     }
 
-    std::pair<char *, uint32_t> unpack(const char *buffer, uint32_t length)
+    std::pair<char *, size_t> unpack(const char *buffer, size_t length)
     {
         if (!is_valid_msg(buffer, length))
         {
@@ -112,7 +143,7 @@ namespace Payload {
         }
         return { const_cast<char*>(buffer + s_SOS_vec.size()), length - s_SOS_vec.size() - s_EOS_vec.size() };
     }
-    uint32_t unpack(const char *buffer, uint32_t length, char **payload, uint32_t &payload_length)
+    size_t unpack(const char *buffer, size_t length, char **payload, size_t &payload_length)
     {
         if (!is_valid_msg(buffer, length))
         {
@@ -126,7 +157,7 @@ namespace Payload {
         return 0;
     }
 
-    uint32_t unpack_to(const char *buffer, uint32_t length, char *dst, uint32_t &payload_length)
+    size_t unpack_to(const char *buffer, size_t length, char *dst, size_t &payload_length)
     {
         if (!is_valid_msg(buffer, length))
         {
