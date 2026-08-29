@@ -29,6 +29,7 @@ if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
 :: Parse command line arguments
 if "%1"=="build_encryptor_only" goto :build_encryptor
 if "%1"=="build_target_only" goto :build_target
+if "%1"=="compile_dll" goto :compile_dll
 if "%1"=="clean" goto :clean
 
 
@@ -148,7 +149,7 @@ goto :eof
 
 :done
 
-:compile dll
+:compile_dll
 echo [6/5] Compiling DLL...
 if "%VSCMD_ARG_TGT_ARCH%"=="arm64" (
     armasm64.exe -nologo "%SRC_DIR%\sys\syscall_trampoline_arm64.asm" -o "%BUILD_DIR%\syscall_trampoline.o"
@@ -177,8 +178,7 @@ link %LFLAGS_COMMON_DLL% %LFLAGS_COMMON% %LFLAGS_MERGE% /DLL /OUT:"%BUILD_DIR%\l
 :: compile to executable the examples/simple/main.cpp with lib.dll
 mkdir "%BUILD_DIR%\examples\simple" 2>nul
 cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\..\examples\simple\main.cpp" /Fo"%BUILD_DIR%\examples\simple\main.o"
-link %LFLAGS_COMMON% /OUT:"%BUILD_DIR%\examples\simple\main" "%BUILD_DIR%\examples\simple\main.o" "%BUILD_DIR%\lib.dll" version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib
-
+link %LFLAGS_COMMON% /OUT:"%BUILD_DIR%\simple.exe" "%BUILD_DIR%\examples\simple\main.o" "%BUILD_DIR%\lib.lib" version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib
 
 goto :eof
 :done

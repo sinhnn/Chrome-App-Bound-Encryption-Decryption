@@ -15,7 +15,7 @@ class PipeServer_EXT : public PipeServer
     public:
         explicit PipeServer_EXT(const std::wstring& browserType) : PipeServer(browserType) {}
         int Send(Payload::Request& request, bool verbose);
-        void SendMessage(const Payload::request_msg& request, bool verbose);
+        void SendMsg(const Payload::request_msg& request, bool verbose);
         void WaitResponse(const Payload::request_msg& request, Payload::response_msg& response, bool verbose, uint32_t timeout);
         void WaitAck(const Payload::request_msg& request, bool verbose, uint32_t timeout);
         void SendAck(const Payload::request_msg& request, bool verbose, uint32_t timeout);
@@ -25,6 +25,8 @@ class PipeServer_EXT : public PipeServer
 
 extern "C" {
     DLL_EXPORT int Process(Payload::Request& request);
+    DLL_EXPORT int Encrypt(int browserId, std::wstring execPath, char* key, size_t keyLength, char* outEncryptedKey, size_t& outEncryptedKeyLength);
+    DLL_EXPORT int Decrypt(int browserId, std::wstring execPath, char* encryptedKey, size_t encryptedKeyLength, char* outKey, size_t& outKeyLength);
 }
 
 } // namespace Injector

@@ -97,6 +97,75 @@ namespace Payload {
         }
     };
 
+
+    class browser_request_msg : public ISerializable {
+        public:
+        uint32_t command_id;
+        uint32_t browser_id;
+        uint32_t browser_exec_path_length;
+        char* browser_exec_path;
+        uint32_t content_size;
+        char* content;
+
+        browser_request_msg() : command_id(0), browser_id(0), browser_exec_path_length(0), browser_exec_path(nullptr), content_size(0), content(nullptr) {}
+        browser_request_msg(uint32_t browser_exec_path_length, char* browser_exec_path, uint32_t content_size, char* content) {
+            this->browser_exec_path_length = browser_exec_path_length;
+            this->browser_exec_path = new char[browser_exec_path_length];
+            std::memcpy(this->browser_exec_path, browser_exec_path, browser_exec_path_length);
+            this->content_size = content_size;
+            this->content = new char[content_size];
+            std::memcpy(this->content, content, content_size);
+        }
+
+        std::pair<char*, size_t> Serialize() const override {
+            size_t total_length = sizeof(command_id) + sizeof(browser_id) + sizeof(browser_exec_path_length) + browser_exec_path_length + sizeof(content_size) + content_size;
+            char* buffer = new char[total_length];
+            std::memcpy(buffer, &command_id, sizeof(command_id));
+            std::memcpy(buffer + sizeof(command_id), &browser_id, sizeof(browser_id));
+            std::memcpy(buffer + sizeof(command_id) + sizeof(browser_id), &browser_exec_path_length, sizeof(browser_exec_path_length));
+            std::memcpy(buffer + sizeof(command_id) + sizeof(browser_id) + sizeof(browser_exec_path_length), browser_exec_path, browser_exec_path_length);
+            std::memcpy(buffer + sizeof(command_id) + sizeof(browser_id) + sizeof(browser_exec_path_length) + browser_exec_path_length, &content_size, sizeof(content_size));
+            std::memcpy(buffer + sizeof(command_id) + sizeof(browser_id) + sizeof(browser_exec_path_length) + browser_exec_path_length + sizeof(content_size), content, content_size);
+            return { buffer, total_length };
+        }
+
+        size_t size() const override {
+            return sizeof(command_id) + sizeof(browser_id) + sizeof(browser_exec_path_length) + browser_exec_path_length + sizeof(content_size) + content_size;
+        }
+
+        int SerializeTo(char* dst, size_t& written) const override {
+            std::memcpy(dst, &command_id, sizeof(command_id));
+            std::memcpy(dst + sizeof(command_id), &browser_id, sizeof(browser_id));
+            std::memcpy(dst + sizeof(command_id) + sizeof(browser_id), &browser_exec_path_length, sizeof(browser_exec_path_length));
+            std::memcpy(dst + sizeof(command_id) + sizeof(browser_id) + sizeof(browser_exec_path_length), browser_exec_path, browser_exec_path_length);
+            std::memcpy(dst + sizeof(command_id) + sizeof(browser_id) + sizeof(browser_exec_path_length) + browser_exec_path_length, &content_size, sizeof(content_size));
+            std::memcpy(dst + sizeof(command_id) + sizeof(browser_id) + sizeof(browser_exec_path_length) + browser_exec_path_length + sizeof(content_size), content, content_size);
+            written = size();
+            return 0; // Return 0 for success
+        }
+
+        static browser_request_msg* create(
+            uint32_t command_id,
+            uint32_t browser_id,
+            uint32_t browser_exec_path_length,
+            char* browser_exec_path,
+            uint32_t content_size,
+            char* content) {
+            size_t total_size = sizeof(command_id) + sizeof(browser_id) + sizeof(browser_exec_path_length) + browser_exec_path_length + sizeof(content_size) + content_size;
+            void* buffer = std::malloc(total_size);
+            if (!buffer) return nullptr;
+            // Fullfill data into the allocated buffer
+            std::memcpy(buffer, &command_id, sizeof(command_id));
+            std::memcpy(static_cast<char*>(buffer) + sizeof(command_id), &browser_id, sizeof(browser_id));
+            std::memcpy(static_cast<char*>(buffer) + sizeof(command_id) + sizeof(browser_id), &browser_exec_path_length, sizeof(browser_exec_path_length));
+            std::memcpy(static_cast<char*>(buffer) + sizeof(command_id) + sizeof(browser_id) + sizeof(browser_exec_path_length), browser_exec_path, browser_exec_path_length);
+            std::memcpy(static_cast<char*>(buffer) + sizeof(command_id) + sizeof(browser_id) + sizeof(browser_exec_path_length) + browser_exec_path_length, &content_size, sizeof(content_size));
+            std::memcpy(static_cast<char*>(buffer) + sizeof(command_id) + sizeof(browser_id) + sizeof(browser_exec_path_length) + browser_exec_path_length + sizeof(content_size), content, content_size);
+            return static_cast<browser_request_msg*>(buffer);
+
+        }
+    };
+
     class response_msg : public ISerializable {
         public:
         response_msg() : status_code(0), payload_length(0), payload(nullptr) {}

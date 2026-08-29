@@ -15,6 +15,18 @@
 
 namespace Injector {
 
+enum Browsers {
+    NONE,
+    CHROME,
+    EDGE
+};
+
+enum CommandId {
+    NONE,
+    DECRYPT,
+    ENCRYPT
+};
+
 static const uint32_t kMaxMessageSize = 4096; // Define a maximum message size for the buffer
 
 int Process(Payload::Request& request)
@@ -77,14 +89,47 @@ int Process(Payload::Request& request)
     return 0;
 }
 
+int Decrypt(int browserId, std::wstring execPath, char *encryptedKey, size_t encryptedKeyLength, char *outKey, size_t &outKeyLength)
+{
+    Payload::request_msg reqMsg;
+    reqMsg.command_id = static_cast<uint32_t>(CommandId::DECRYPT);
+
+    Payload::browser_request_msg browserReqMsg;
+    browserReqMsg.command_id = static_cast<uint32_t>(CommandId::DECRYPT);
+    browserReqMsg.browser_id = browserId;
+    browserReqMsg.browser_exec_path_length = static_cast<uint32_t>(execPath.size() * sizeof(wchar_t));
+    browserReqMsg.browser_exec_path = reinterpret_cast<char*>(execPath.data());
+    browserReqMsg.content_size = encryptedKeyLength;
+    browserReqMsg.content = encryptedKey;
+
+    // Serialize the browser request message into the request payload
+    reqMsg.payload_length = browserReqMsg.size();
+    reqMsg.payload = reinterpret_cast<char*>(&browserReqMsg);
+
+    Payload::Request request(reqMsg);
+
+    outKeyLength = 128;
+    memset(outKey, 'a', outKeyLength);
+    std::cout << "Decrypt called with encrypted key length: " << encryptedKeyLength << " and output buffer length: " << outKeyLength << std::endl;
+    return 0;
+}
+
+int Encrypt(int browserId, std::wstring execPath, char *key, size_t keyLength, char *outEncryptedKey, size_t& outEncryptedKeyLength)
+{
+    outEncryptedKeyLength = 128;
+    memset(outEncryptedKey, 'b', outEncryptedKeyLength);
+    std::cout << "Encrypt called with key length: " << keyLength << " and output buffer length: " << outEncryptedKeyLength << std::endl;
+    return 0;
+}
+
 int PipeServer_EXT::Send(Payload::Request& request, bool verbose)
 {
-    SendMessage(request.request, verbose);
+    SendMsg(request.request, verbose);
     WaitResponse(request.request, request.response, verbose, 5000); // 5 seconds timeout
     return 0;
 }
 
-void PipeServer_EXT::SendMessage(const Payload::request_msg &request, bool verbose)
+void PipeServer_EXT::SendMsg(const Payload::request_msg &request, bool verbose)
 {
     DWORD written = 0;
     size_t requestSize = request.size();
