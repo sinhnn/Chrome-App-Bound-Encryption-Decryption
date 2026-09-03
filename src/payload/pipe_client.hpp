@@ -20,14 +20,14 @@ namespace Payload {
         void LogData(const std::string& key, const std::string& value);
 
         struct Config {
-            bool verbose;
-            bool fingerprint;
+            bool verbose {true};
+            bool fingerprint {false};
             std::string outputPath;
             std::string browserType;
         };
         Config ReadConfig();
 
-    private:
+    protected:
         HANDLE m_hPipe;
     };
 

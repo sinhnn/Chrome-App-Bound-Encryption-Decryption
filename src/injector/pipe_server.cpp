@@ -18,7 +18,7 @@ namespace Injector {
         m_hPipe.reset(CreateNamedPipeW(m_pipeName.c_str(), PIPE_ACCESS_DUPLEX,
                                        PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
                                        1, 4096, 4096, 0, nullptr));
-        
+
         if (!m_hPipe) {
             throw std::runtime_error("CreateNamedPipeW failed: " + std::to_string(GetLastError()));
         }

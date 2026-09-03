@@ -7,7 +7,19 @@
 
 namespace Injector {
 
-    ProcessManager::ProcessManager(const BrowserInfo& browser) : m_browser(browser) {}
+    ProcessManager::ProcessManager(const BrowserInfo& browser) : m_browser(browser) {
+        ADD_CHECK_POINT
+        std::wcout << L"type: " << m_browser.type << std::endl;
+        ADD_CHECK_POINT
+        std::wcout << L"exeName: " << m_browser.exeName << std::endl;
+        ADD_CHECK_POINT
+        std::wcout << L"fullPath: " << m_browser.fullPath << std::endl;
+        ADD_CHECK_POINT
+        std::wcout << L"displayName: " << Core::ToWide(m_browser.displayName) << std::endl;
+        ADD_CHECK_POINT
+        std::wcout << L"version: " << Core::ToWide(m_browser.version) << std::endl;
+        ADD_CHECK_POINT
+    }
 
     ProcessManager::~ProcessManager() {
         // Ensure cleanup if not explicitly terminated
@@ -15,19 +27,37 @@ namespace Injector {
     }
 
     void ProcessManager::CreateSuspended() {
+        ADD_CHECK_POINT
         STARTUPINFOW si{};
         PROCESS_INFORMATION pi{};
         si.cb = sizeof(si);
+        ADD_CHECK_POINT
+        if (m_browser.fullPath.empty()) {
+            std::wcerr << L"Executable path is empty" << std::endl;
+            ADD_CHECK_POINT
+            throw std::runtime_error("Executable path is empty");
+        }
+
+        ADD_CHECK_POINT
+        std::wcout << L"==> ++ Creating suspended process for: " << m_browser.fullPath << std::endl;
+        ADD_CHECK_POINT
+        // Check the path is existing
+        if (GetFileAttributesW(m_browser.fullPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+            std::wcerr << L"Executable path does not exist: " << m_browser.fullPath << std::endl;
+            throw std::runtime_error("Executable path does not exist: " + Core::ToUtf8(m_browser.fullPath));
+        }
+        ADD_CHECK_POINT
+        std::wcout << L"==> Creating suspended process for: " << m_browser.fullPath << std::endl;
 
         if (!CreateProcessW(m_browser.fullPath.c_str(), nullptr, nullptr, nullptr,
                             FALSE, CREATE_SUSPENDED, nullptr, nullptr, &si, &pi)) {
             throw std::runtime_error("CreateProcessW failed: " + std::to_string(GetLastError()));
         }
-
+        ADD_CHECK_POINT
         m_hProcess.reset(pi.hProcess);
         m_hThread.reset(pi.hThread);
         m_pid = pi.dwProcessId;
-
+        ADD_CHECK_POINT
         CheckArchitecture();
     }
 

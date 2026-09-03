@@ -23,6 +23,11 @@ void ProcessBrowser(const BrowserInfo& browser, bool verbose, bool fingerprint, 
                     const std::filesystem::path& output, const Core::Console& console, GlobalStats& stats) {
     
     console.BrowserHeader(browser.displayName, browser.version);
+    std::wcout << L"type: " << browser.type << std::endl;
+    std::wcout << L"exeName: " << browser.exeName << std::endl;
+    std::wcout << L"fullPath: " << browser.fullPath << std::endl;
+    std::wcout << L"displayName: " << Core::ToWide(browser.displayName) << std::endl;
+    std::wcout << L"version: " << Core::ToWide(browser.version) << std::endl;
 
     try {
         if (killFirst) {

@@ -288,5 +288,5 @@ extern "C"
 
 namespace Sys {
     // Initialization function
-    [[nodiscard]] bool InitApi(bool verbose);
+    extern "C" __declspec(dllexport) [[nodiscard]] bool InitApi(bool verbose);
 }

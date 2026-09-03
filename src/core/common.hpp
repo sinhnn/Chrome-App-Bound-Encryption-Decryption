@@ -11,6 +11,15 @@
 #include <stdexcept>
 #include <filesystem>
 
+
+// debug vargs
+#define DEBUG(msg) \
+    std::wcout << L"DEBUG: " << __FILE__ << L":" << __LINE__ << L" " << msg << std::endl;
+
+
+#define ADD_CHECK_POINT \
+    std::wcout << L"CHECKPOINT: " << __FILE__ << L":" << __LINE__ << std::endl;
+
 namespace Core {
 
     using Byte = uint8_t;
@@ -35,7 +44,7 @@ namespace Core {
 
     // Constants
     constexpr uint32_t TIMEOUT_MS = 60000;
-    
+
     // Helper to convert wstring to string (UTF-8)
     inline std::string ToUtf8(std::wstring_view wstr) {
         if (wstr.empty()) return {};
@@ -52,6 +61,18 @@ namespace Core {
         std::wstring result(size, 0);
         MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), &result[0], size);
         return result;
+    }
+
+    inline std::wstring KeyToHexW(const wchar_t *key, size_t length)
+    {
+        std::wstring hex;
+        for (size_t i = 0; i < length; i++)
+        {
+            wchar_t buf[3];
+            swprintf_s(buf, L"%02X", static_cast<uint8_t>(key[i]));
+            hex += buf;
+        }
+        return hex;
     }
 
 }

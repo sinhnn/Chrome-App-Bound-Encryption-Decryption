@@ -13,52 +13,7 @@ namespace Payload {
     std::string s_EOS = "__EOS__";
     const std::vector<uint8_t> s_SOS_vec(s_SOS.begin(), s_SOS.end());
     const std::vector<uint8_t> s_EOS_vec(s_EOS.begin(), s_EOS.end());
-
-    // Couple maps to maintain the bidirectional mapping between type_index and integer IDs
-    // static std::unordered_map<std::type_index, int> s_type_idx_map;
-    // static std::unordered_map<int, std::type_index> s_idx_type_map;
-
-    // int register_type(std::type_index type_idx)
-    // {
-    //     auto it = s_type_idx_map.find(type_idx);
-    //     if (it != s_type_idx_map.end())
-    //     {
-    //         return it->second;
-    //     }
-    //     else
-    //     {
-    //         int idx = s_next_type_idx++;
-    //         s_type_idx_map[type_idx] = idx;
-    //         s_idx_type_map[idx] = type_idx;
-    //         return idx;
-    //     }
-    // }
-
-    // int get_id(std::type_index type_idx)
-    // {
-    //     auto it = s_type_idx_map.find(type_idx);
-    //     if (it != s_type_idx_map.end())
-    //     {
-    //         return it->second;
-    //     }
-    //     else
-    //     {
-    //         return -1; // Type not registered
-    //     }
-    // }
-
-    // std::type_index get_type(int id)
-    // {
-    //     auto it = s_idx_type_map.find(id);
-    //     if (it != s_idx_type_map.end())
-    //     {
-    //         return it->second;
-    //     }
-    //     else
-    //     {
-    //         throw std::runtime_error("Type ID not registered");
-    //     }
-    // }
+    const size_t kMaxMessageSize = 4096; // 4096 + s_EOS_vec.size() + s_SOS_vec.size()
 
     static uint32_t crc32_table[256];
     static int table_initialized = 0;
@@ -86,12 +41,12 @@ namespace Payload {
         return crc ^ 0xFFFFFFFF;
     }
 
-    size_t calculate_pack_size(size_t payload_length)
+    size_t Packet::calculate_pack_size(size_t payload_length)
     {
         return s_SOS_vec.size() + payload_length + s_EOS_vec.size();
     }
 
-    std::pair<char *, size_t> pack(const char *data, size_t length)
+    std::pair<char *, size_t> Packet::pack(const char *data, size_t length)
     {
         // Pack the data with start and end signals
         size_t total_length = s_SOS_vec.size() + length + s_EOS_vec.size();
@@ -104,7 +59,7 @@ namespace Payload {
         return {buffer, total_length};
     }
 
-    int pack_to(const char *data, size_t length, char *dst)
+    int Packet::pack_to(const char *data, size_t length, char *dst)
     {
         // Pack the data with start and end signals into the provided buffer
         std::memcpy(dst, s_SOS_vec.data(), s_SOS_vec.size());
@@ -113,7 +68,7 @@ namespace Payload {
         return 0;
     }
 
-    bool is_valid_msg(const char* buffer, size_t length)
+    bool Packet::is_valid_packet(const char* buffer, size_t length)
     {
         if (length < s_SOS_vec.size() + s_EOS_vec.size())
         {
@@ -135,17 +90,17 @@ namespace Payload {
         return true; // Valid message
     }
 
-    std::pair<char *, size_t> unpack(const char *buffer, size_t length)
+    std::pair<char *, size_t> Packet::unpack(const char *buffer, size_t length)
     {
-        if (!is_valid_msg(buffer, length))
+        if (!is_valid_packet(buffer, length))
         {
             throw std::runtime_error("Invalid message format");
         }
         return { const_cast<char*>(buffer + s_SOS_vec.size()), length - s_SOS_vec.size() - s_EOS_vec.size() };
     }
-    size_t unpack(const char *buffer, size_t length, char **payload, size_t &payload_length)
+    size_t Packet::unpack(const char *buffer, size_t length, char **payload, size_t &payload_length)
     {
-        if (!is_valid_msg(buffer, length))
+        if (!is_valid_packet(buffer, length))
         {
             throw std::runtime_error("Invalid message format");
         }
@@ -157,9 +112,9 @@ namespace Payload {
         return 0;
     }
 
-    size_t unpack_to(const char *buffer, size_t length, char *dst, size_t &payload_length)
+    size_t Packet::unpack_to(const char *buffer, size_t length, char *dst, size_t &payload_length)
     {
-        if (!is_valid_msg(buffer, length))
+        if (!is_valid_packet(buffer, length))
         {
             throw std::runtime_error("Invalid message format");
         }
