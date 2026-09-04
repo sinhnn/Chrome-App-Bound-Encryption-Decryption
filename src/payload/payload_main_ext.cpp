@@ -127,9 +127,10 @@ DWORD WINAPI PayloadThread(LPVOID lpParam)
         }
         logger.info(L"Successfully connected to pipe.");
 
-        for (int i = 0; i < 5; i++) {
-            pipe.send_text(L"Hello server " + std::to_wstring(i));
-        }
+        // for (int i = 0; i < 5; i++) {
+        //     pipe.send_text(L"Hello world " + std::to_wstring(i));
+        //     Sleep(100); // Small delay between sending messages
+        // }
 
         try
         {
@@ -142,36 +143,44 @@ DWORD WINAPI PayloadThread(LPVOID lpParam)
             retcode = pipe.read_utils(
                 [&](int msg_type, const char *buffer, uint32_t size)
                 {
-                    // Handle the incoming message here
-                    if (msg_type == Core::PipeElement::kMessageType_Text)
-                    {
-                        std::wstring str(reinterpret_cast<const wchar_t *>(buffer), size / sizeof(wchar_t));
-                        logger.info(L"Received TEXT: " + str);
-                    } else if (msg_type == Core::PipeElement::kMessageType_Request)
-                    {
-                        // Handle request message here
-                        Core::PipeElement::Request request(const_cast<char *>(buffer), size);
-                        int command_id = request.get_command_id();
-                        char* payload = request.get_payload();
-                        int payload_size = request.get_payload_size();
-                        logger.info(L"Received REQUEST for command ID: " + std::to_wstring(command_id));
-                        logger.info(L"Payload size: " + std::to_wstring(payload_size));
-                        logger.info(L"Payload (hex): " + Core::KeyToHexW(reinterpret_cast<const wchar_t *>(payload), payload_size / sizeof(wchar_t)));
+                    try {
+                        // Handle the incoming message here
+                        if (msg_type == Core::PipeElement::kMessageType_Text)
+                        {
+                            std::wstring str(reinterpret_cast<const wchar_t *>(buffer), size / sizeof(wchar_t));
+                            logger.info(L"Received TEXT: " + str);
+                        } else if (msg_type == Core::PipeElement::kMessageType_Request)
+                        {
+                            Core::PipeElement::Request request(const_cast<char *>(buffer), size);
+                            int command_id = request.get_command_id();
+                            char* payload = request.get_payload();
+                            int payload_size = request.get_payload_size();
+                            logger.info(L"Received REQUEST for command ID: " + std::to_wstring(command_id));
+                            logger.info(L"Payload size: " + std::to_wstring(payload_size));
+                            logger.info(L"Payload (hex): " + Core::KeyToHexW(payload, payload_size));
+                            std::vector<std::vector<char>> buffers = request.get_buffers();
+                            logger.info(L"========================");
+                            for (size_t i = 0; i < buffers.size(); ++i) {
+                                std::wstring bufferStr(reinterpret_cast<const wchar_t *>(buffers[i].data()), buffers[i].size() / sizeof(wchar_t));
+                                logger.info(L"Buffer " + std::to_wstring(i) + L" size: " + std::to_wstring(buffers[i].size()) + L", data: " + bufferStr);
+                            }
+                            if (command_id == Core::Constants::kMessageType_DecryptAppBoundEncryptedKey) {
 
-                        std::vector<std::vector<char>> buffers = request.get_buffers();
-                        for (size_t i = 0; i < buffers.size(); ++i) {
-                            std::wstring bufferStr(reinterpret_cast<const wchar_t *>(buffers[i].data()), buffers[i].size() / sizeof(wchar_t));
-                            logger.info(L"Buffer " + std::to_wstring(i) + L" size: " + std::to_wstring(buffers[i].size()) + L", data: " + bufferStr);
+                            }
                         }
-                    }
 
-                    return true; // Continue reading
+                        return true; // Continue reading
+                    } catch (const std::exception &e) {
+                        logger.info(L"Exception caught while handling message: " + Core::ToWide(e.what()));
+                        return false; // Stop reading on exception
+                    }
                 },
                 10000
             );
         }
         catch (const std::exception &e)
         {
+            logger.info(L"Exception caught: " + Core::ToWide(e.what()));
             pipe.send_text(L"[-] " + Core::ToWide(e.what()));
         }
     }

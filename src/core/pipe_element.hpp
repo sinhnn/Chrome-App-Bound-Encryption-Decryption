@@ -10,11 +10,77 @@
 
 namespace Core
 {
-    struct Packet {
-        int message_type;
-        uint32_t size;
-        const char* buffer;
+    struct ISerializable
+    {
+        virtual ~ISerializable() = default;
+        virtual int serialize_to(char* out_buffer, uint32_t& out_size) const = 0;
+        virtual uint32_t get_size() const = 0;
     };
+
+    struct Request : public ISerializable
+    {
+        virtual ~Request() = default;
+        int serialize_to(char* out_buffer, uint32_t& out_size) const override {
+            uint32_t offset = 0;
+            memcpy(out_buffer + offset, &command_id, sizeof(int));
+            offset += sizeof(int);
+            for (const auto& arg : args) {
+                uint32_t arg_size = static_cast<uint32_t>(arg.size());
+                memcpy(out_buffer + offset, &arg_size, sizeof(uint32_t));
+                offset += sizeof(uint32_t);
+                memcpy(out_buffer + offset, arg.data(), arg_size);
+                offset += arg_size;
+            }
+            out_size = offset;
+            return 0;
+        }
+        uint32_t get_size() const override {
+            uint32_t total_size = sizeof(int); // Size of command_id
+            for (const auto& arg : args) {
+                total_size += sizeof(uint32_t); // Size of each argument's length
+                total_size += static_cast<uint32_t>(arg.size()); // Size of each argument's data
+            }
+            return total_size;
+        }
+
+        int command_id;
+        std::vector<std::vector<char>> args;
+    };
+
+    class Response {
+    public:
+        Response(const char* buffer, uint32_t size) {
+            // Implement deserialization logic for Response
+            this->buffer_ = buffer;
+            this->size_ = size;
+        }
+
+        int get_command_id() const {
+            return *reinterpret_cast<const int*>(buffer_);
+        }
+
+        std::vector<std::vector<char>> get_args() {
+            if (initialized_args_) {
+                return args_;
+            }
+            uint32_t offset = sizeof(int); // Skip command_id
+            while (offset < size_) {
+                uint32_t arg_size = *reinterpret_cast<const uint32_t*>(buffer_ + offset);
+                offset += sizeof(uint32_t);
+                std::vector<char> arg(buffer_ + offset, buffer_ + offset + arg_size);
+                args_.push_back(arg);
+                offset += arg_size;
+            }
+            initialized_args_ = true;
+            return args_;
+        }
+    protected:
+        uint32_t size_;
+        const char* buffer_;
+        std::vector<std::vector<char>> args_;
+        bool initialized_args_ = false;
+    };
+
 
     class PipeElement
     {
@@ -36,10 +102,10 @@ namespace Core
         virtual ~PipeElement();
         int close();
         bool is_valid() const;
-        // int write(char* buffer, size_t size);
         int write(int message_type, const char* buffer, uint32_t size);
-        int write(int message_type, int command_id, const char* buffer, uint32_t size);
-        int write(int message_type, int command_id, std::vector<std::vector<char>> buffers);
+        int write(int message_type, std::vector<std::vector<char>> buffers);
+        int write(int message_type, const ISerializable& serializable);
+        int write(int message_type, std::vector<ISerializable*> serializables);
 
         int send_text(std::wstring message);
         int register_handler(int message_type, std::function<void(const char* buffer, uint32_t size)> handler);
@@ -53,60 +119,40 @@ namespace Core
         int write_ (const char* buffer, uint32_t size, DWORD& bytesWritten);
 
     public:
-        // Packet format:
-        // [HeaderSign][Payload][CRC][FooterSign]
-
-        // Message format:
-        // [MessageType][Payload]
-
-        // Request | Response format:
-        // [MessageType][CommandID][Payload]
-
-        // static int pack_to(const char* buffer, size_t size, char* out_buffer, size_t& out_size);
-        // static std::pair<char*, size_t> pack(const char* buffer, size_t size);
         static int pack_to(int message_type, const char* buffer, uint32_t size, char* out_buffer, uint32_t& out_size);
-        // Used to packe request and reponse with separate command ID, typically for correlating requests and responses
-        static int pack_to(int message_type, int command_id, const char* buffer, uint32_t size, char* out_buffer, uint32_t& out_size);
-        // Used to pack multiple buffers into a single message with a command ID
-        static int pack_to(int message_type, int command_id, std::vector<std::vector<char>> buffers, char* out_buffer, uint32_t& out_size);
         static int pack_to(int message_type, std::vector<std::vector<char>> buffers, char* out_buffer, uint32_t& out_size);
-
+        static int pack_to(int message_type, const ISerializable& serializable, char* out_buffer, uint32_t& out_size);
         static std::pair<char*, uint32_t> pack(int message_type, const char* buffer, uint32_t size);
-        // Used to pack request and response with separate command ID, typically for correlating requests and responses
-        static std::pair<char*, uint32_t> pack(int message_type, int command_id, const char* buffer, uint32_t size);
 
         static int is_valid_packet(const char* buffer, uint32_t size);
 
-        // static int unpack_to(const char* buffer, uint32_t size, char* out_buffer, uint32_t& out_size);
-        // static int unpack(const char* buffer, uint32_t size, char*& out_buffer, uint32_t& out_size);
-
         static int unpack_to(const char* buffer, uint32_t size, int& message_type, char* out_buffer, uint32_t& out_size);
-        // static int unpack_to(const char* buffer, uint32_t size, int& message_type, int& command_id, char* out_buffer, uint32_t& out_size);
         static int unpack(const char* buffer, uint32_t size, int& message_type, char*& out_buffer, uint32_t& out_size);
-        // static int unpack(const char* buffer, uint32_t size, int& message_type, int& command_id,char*& out_buffer, uint32_t& out_size);
 
         class _BaseROR
         {
         public:
             _BaseROR(char* buffer, int size) : buffer_(buffer), size_(size) {}
 
-
-            int get_command_id() const {
+            int get_command_id_size() const {
                 return *reinterpret_cast<int*>(buffer_);
             }
 
+            int get_command_id() const {
+                return *reinterpret_cast<int*>(buffer_ + get_command_id_size());
+            }
+
             char* get_payload() const {
-                return buffer_ + sizeof(int);
+                return buffer_ + sizeof(int) + get_command_id_size();
             }
 
             int get_payload_size() const {
-                return size_ - sizeof(int);
+                return size_ - sizeof(int) - get_command_id_size();
             }
 
             std::vector<std::vector<char>> get_buffers() {
                 if (!buffers_initialized_) {
-                    // Initialize buffers_ if it's not initialized
-                    size_t offset = sizeof(int);
+                    size_t offset = sizeof(int) + get_command_id_size();
                     while (offset < static_cast<size_t>(size_)) {
                         if (offset + sizeof(uint32_t) > static_cast<size_t>(size_)) {
                             break; // Invalid buffer size

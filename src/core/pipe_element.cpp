@@ -52,7 +52,7 @@ namespace Core
         bytesWritten = 0;
         // DWORD bytesWritten;
 
-        logger_.info(L"TX: " + Core::KeyToHexW(reinterpret_cast<const wchar_t *>(buffer), size / sizeof(wchar_t)));
+        logger_.info(L"TX: " + Core::KeyToHexW(buffer, size));
         if (!WriteFile(hFile_, buffer, static_cast<DWORD>(size), &bytesWritten, nullptr))
         {
             return -1; // Error
@@ -78,13 +78,13 @@ namespace Core
         return write_(packedBuffer, packedSize, bytesWritten);
     }
 
-    int PipeElement::write(int message_type, int command_id, const char* buffer, uint32_t size)
+    int PipeElement::write(int message_type, std::vector<std::vector<char>> buffers)
     {
         int retcode = 0;
         DWORD bytesWritten;
         char packedBuffer[kBufferSize]; // Temporary buffer for packing the data
         uint32_t packedSize = 0;
-        if (pack_to(message_type, command_id, buffer, size, packedBuffer, packedSize) != 0)
+        if (pack_to(message_type, buffers, packedBuffer, packedSize) != 0)
         {
             return -1; // Error packing the data
         }
@@ -97,30 +97,47 @@ namespace Core
         return write_(packedBuffer, packedSize, bytesWritten);
     }
 
-    int PipeElement::write(int message_type, int command_id, std::vector<std::vector<char>> buffers)
-    {
+    int PipeElement::write(int message_type, const ISerializable& content) {
         int retcode = 0;
-        DWORD bytesWritten;
-        char packedBuffer[kBufferSize]; // Temporary buffer for packing the data
+        char buffer[kBufferSize]; // Temporary buffer for packing the data
         uint32_t packedSize = 0;
-        if (pack_to(message_type, command_id, buffers, packedBuffer, packedSize) != 0)
-        {
-            return -1; // Error packing the data
-        }
+        DWORD bytesWritten;
 
-        if (packedSize == 0)
-        {
-            return -1; // Error: packed size is zero
-        }
+        uint32_t total_size = sizeof(kHeaderSign) + sizeof(int) + content.get_size() + kCrcSize + sizeof(kFooterSign);
+        uint32_t offset = 0;
 
-        return write_(packedBuffer, packedSize, bytesWritten);
+        // Copy header
+        memcpy(buffer + offset, kHeaderSign, sizeof(kHeaderSign));
+        offset += sizeof(kHeaderSign);
+
+        // Copy message type
+        memcpy(buffer + offset, &message_type, sizeof(int));
+        offset += sizeof(int);
+
+        // Copy payload
+        uint32_t bytes_content_written = 0;
+        content.serialize_to(buffer + offset, bytes_content_written);
+        offset += bytes_content_written;
+
+        // Compute and copy CRC (dummy CRC for now)
+        uint32_t crc = 0; // Replace with actual CRC computation
+        memcpy(buffer + offset, &crc, kCrcSize);
+        offset += kCrcSize;
+
+        // Copy footer
+        memcpy(buffer + offset, kFooterSign, sizeof(kFooterSign));
+        offset += sizeof(kFooterSign);
+
+        packedSize = static_cast<uint32_t>(total_size);
+        return write_(buffer, packedSize, bytesWritten);
     }
-
 
     int PipeElement::send_text(std::wstring message)
     {
         logger_.info(L"Sending TEXT: " + message);
-        return write(kMessageType_Text, reinterpret_cast<const char*>(message.data()), static_cast<uint32_t>(message.size() * sizeof(wchar_t)));
+        char* buffer = reinterpret_cast<char*>(message.data());
+        uint32_t bufferSize = static_cast<uint32_t>(message.size() * sizeof(wchar_t));
+        return write(kMessageType_Text, buffer, bufferSize);
     }
 
     int PipeElement::register_handler(int message_type, std::function<void(const char* buffer, uint32_t size)> handler)
@@ -179,12 +196,14 @@ namespace Core
                 continue; // No data available, keep waiting
             }
 
+            // Might receive a partial packet or multiple packages, so we need to handle accordingly
             if (!ReadFile(hFile_, localBuffer, sizeof(localBuffer), &bytesRead, nullptr))
             {
                 logger_.error(L"ReadFile failed");
                 return -1; // Error
             }
 
+            logger_.info(L"RX: " + Core::KeyToHexW(localBuffer, bytesRead));
             retcode = is_valid_packet(localBuffer, static_cast<uint32_t>(bytesRead));
             if (retcode != kSuccessCode)
             {
@@ -192,13 +211,7 @@ namespace Core
                 break;
             }
 
-            // Unpack the packet to the input buffer
-
-            uint32_t bytesMsg = bytesRead - sizeof(kHeaderSign) - sizeof(uint32_t) - sizeof(kFooterSign); // Subtract header and size field
-            logger_.info(L"RX: " + Core::KeyToHexW(reinterpret_cast<const wchar_t *>(localBuffer + sizeof(kHeaderSign)), bytesMsg / sizeof(wchar_t)));
-
             int message_type = *reinterpret_cast<int*>(localBuffer + sizeof(kHeaderSign));
-            char* buffer = localBuffer + sizeof(kHeaderSign) + sizeof(int);
             if (message_type == kMessageType_CloseTunnel)
             {
                 logger_.info(L"Close tunnel message received");
@@ -206,8 +219,11 @@ namespace Core
                 break;
             }
 
-            size_t size = bytesRead - (sizeof(kHeaderSign) + sizeof(int) + kCrcSize + sizeof(kFooterSign));
-            if (delegate(message_type, buffer, static_cast<uint32_t>(size)))
+            logger_.info(L"Message type: " + std::to_wstring(message_type));
+            size_t payload_size = bytesRead - (sizeof(kHeaderSign) + sizeof(int) + kCrcSize + sizeof(kFooterSign));
+            char* buffer = localBuffer + sizeof(kHeaderSign) + sizeof(int);
+            logger_.info(L"Payload: " + Core::KeyToHexW(buffer, payload_size));
+            if (delegate(message_type, buffer, static_cast<uint32_t>(payload_size)))
             {
                 retcode = 0;
                 break;
@@ -254,113 +270,14 @@ namespace Core
     }
 
     int PipeElement::pack_to(int message_type,
-            int command_id,
-            const char* buffer,
-            uint32_t size, char* packed_buffer, uint32_t& packed_size) {
-        if (!packed_buffer) {
-            return -1; // Invalid buffer
-        }
+        std::vector<std::vector<char>> buffers,
+        char* out_buffer, uint32_t& out_size) {
 
-        packed_size = 0;
-
-        size_t total_size = sizeof(kHeaderSign) + sizeof(int) + sizeof(int) + size + kCrcSize + sizeof(kFooterSign);
-        size_t offset = 0;
-
-        // Copy header
-        memcpy(packed_buffer + offset, kHeaderSign, sizeof(kHeaderSign));
-        offset += sizeof(kHeaderSign);
-
-        // Copy message type
-        memcpy(packed_buffer + offset, &message_type, sizeof(int));
-        offset += sizeof(int);
-
-        // Copy command ID
-        memcpy(packed_buffer + offset, &command_id, sizeof(int));
-        offset += sizeof(int);
-
-        // Copy payload
-        memcpy(packed_buffer + offset, buffer, size);
-        offset += size;
-
-        // Compute and copy CRC (dummy CRC for now)
-        uint32_t crc = 0; // Replace with actual CRC computation
-        memcpy(packed_buffer + offset, &crc, kCrcSize);
-        offset += kCrcSize;
-
-        // Copy footer
-        memcpy(packed_buffer + offset, kFooterSign, sizeof(kFooterSign));
-        offset += sizeof(kFooterSign);
-
-        packed_size = static_cast<uint32_t>(total_size);
-        return 0;
-    }
-
-    int PipeElement::pack_to(int message_type,
-            int command_id,
-            std::vector<std::vector<char>> buffers,
-            char* packed_buffer,
-            uint32_t& packed_size) {
-        if (!packed_buffer) {
-            return -1; // Invalid buffer
-        }
-
-        packed_size = 0;
-
-        size_t total_size = sizeof(kHeaderSign) + sizeof(int) + sizeof(int);
-        for (const auto& buf : buffers) {
-            total_size += buf.size();
-        }
-        total_size += kCrcSize + sizeof(kFooterSign);
-
-        size_t offset = 0;
-
-        // Copy header
-        memcpy(packed_buffer + offset, kHeaderSign, sizeof(kHeaderSign));
-        offset += sizeof(kHeaderSign);
-
-        // Copy message type
-        memcpy(packed_buffer + offset, &message_type, sizeof(int));
-        offset += sizeof(int);
-
-        // Copy command ID
-        memcpy(packed_buffer + offset, &command_id, sizeof(int));
-        offset += sizeof(int);
-
-        // Copy payloads
-        for (const auto& buf : buffers) {
-            uint32_t buf_size = static_cast<uint32_t>(buf.size());
-            memcpy(packed_buffer + offset, &buf_size, sizeof(uint32_t));
-            offset += sizeof(uint32_t);
-            memcpy(packed_buffer + offset, buf.data(), buf_size);
-            offset += buf_size;
-        }
-
-        // Compute and copy CRC (dummy CRC for now)
-        uint32_t crc = 0; // Replace with actual CRC computation
-        memcpy(packed_buffer + offset, &crc, kCrcSize);
-        offset += kCrcSize;
-
-        // Copy footer
-        memcpy(packed_buffer + offset, kFooterSign, sizeof(kFooterSign));
-        offset += sizeof(kFooterSign);
-
-        packed_size = static_cast<uint32_t>(total_size);
-        return 0;
-    }
-
-    int PipeElement::pack_to(int message_type, std::vector<std::vector<char>> buffers, char* out_buffer, uint32_t& out_size) {
         if (!out_buffer) {
             return -1; // Invalid buffer
         }
 
         out_size = 0;
-
-        size_t total_size = sizeof(kHeaderSign) + sizeof(int);
-        for (const auto& buf : buffers) {
-            total_size += buf.size();
-        }
-        total_size += kCrcSize + sizeof(kFooterSign);
-
         size_t offset = 0;
 
         // Copy header
@@ -389,7 +306,44 @@ namespace Core
         memcpy(out_buffer + offset, kFooterSign, sizeof(kFooterSign));
         offset += sizeof(kFooterSign);
 
-        out_size = static_cast<uint32_t>(total_size);
+        out_size = static_cast<uint32_t>(offset);
+        return 0;
+    }
+
+    int PipeElement::pack_to(int message_type,
+        const ISerializable& serializable,
+        char* out_buffer, uint32_t& out_size) {
+
+        if (!out_buffer) {
+            return -1; // Invalid buffer
+        }
+
+        out_size = 0;
+        size_t offset = 0;
+
+        // Copy header
+        memcpy(out_buffer + offset, kHeaderSign, sizeof(kHeaderSign));
+        offset += sizeof(kHeaderSign);
+
+        // Copy message type
+        memcpy(out_buffer + offset, &message_type, sizeof(int));
+        offset += sizeof(int);
+
+        // Copy payload
+        uint32_t bytes_written = 0;
+        serializable.serialize_to(out_buffer + offset, bytes_written);
+        offset += bytes_written;
+
+        // Compute and copy CRC (dummy CRC for now)
+        uint32_t crc = 0; // Replace with actual CRC computation
+        memcpy(out_buffer + offset, &crc, kCrcSize);
+        offset += kCrcSize;
+
+        // Copy footer
+        memcpy(out_buffer + offset, kFooterSign, sizeof(kFooterSign));
+        offset += sizeof(kFooterSign);
+
+        out_size = static_cast<uint32_t>(offset);
         return 0;
     }
 
@@ -399,17 +353,6 @@ namespace Core
         char* packed_buffer = new char[actual_size];
         uint32_t packed_size = 0;
         if (pack_to(message_type, buffer, size, packed_buffer, packed_size) != 0) {
-            delete[] packed_buffer;
-            return {nullptr, 0};
-        }
-        return {packed_buffer, packed_size};
-    }
-
-    std::pair<char*, uint32_t> PipeElement::pack(int message_type, int command_id, const char* buffer, uint32_t size) {
-        uint32_t actual_size = sizeof(kHeaderSign) + sizeof(int) + sizeof(int) + size + kCrcSize + sizeof(kFooterSign);
-        char* packed_buffer = new char[actual_size];
-        uint32_t packed_size = 0;
-        if (pack_to(message_type, command_id, buffer, size, packed_buffer, packed_size) != 0) {
             delete[] packed_buffer;
             return {nullptr, 0};
         }

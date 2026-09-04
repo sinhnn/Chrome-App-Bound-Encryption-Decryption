@@ -38,7 +38,7 @@ namespace Injector
         // TODO: duplicated information between request & browser
         std::wstring pipeName = L"\\\\.\\pipe\\my_pipe";
         // Core::Logger logger(L"master.log");
-        Core::Logger logger = Core::Logger::instance();
+        Core::Logger logger(L"master.log");
         logger.info(L"Starting process injection.");
         Core::Console console(true);
         bool killFirst = false;
@@ -90,15 +90,15 @@ namespace Injector
             console.Debug("  [+] Process created (PID: " + std::to_string(procMgr.GetPid()) + ")");
 
             PipeServer_EXT pipe(pipeName, logger);
-            pipe.register_handler(
-                Core::PipeElement::kMessageType_Text,
-                [&logger](const void *data, size_t size)
-                {
-                    // Handle the browser request message here
-                    std::wstring str(reinterpret_cast<const wchar_t *>(data), size / sizeof(wchar_t));
-                    logger.info(L"Received TEXT: " + str);
-                    return 0; // Return 0 for success
-                });
+            // pipe.register_handler(
+            //     Core::PipeElement::kMessageType_Text,
+            //     [&logger](const void *data, size_t size)
+            //     {
+            //         // Handle the browser request message here
+            //         std::wstring str(reinterpret_cast<const wchar_t *>(data), size / sizeof(wchar_t));
+            //         logger.info(L"Received TEXT: " + str);
+            //         return 0; // Return 0 for success
+            //     });
             pipe.init();
             logger.info(L"IPC pipe initialized: " + pipeName);
             console.Debug("  [+] IPC pipe established: " + Core::ToUtf8(pipeName));
@@ -117,35 +117,33 @@ namespace Injector
 
             logger.info(L"Sending request to payload...");
             std::vector<std::vector<char>> buffers;
-            buffers.push_back(std::vector<char>(reinterpret_cast<const char *>(execPath.c_str()),
-                                                reinterpret_cast<const char *>(execPath.c_str()) + execPath.size() * sizeof(wchar_t)));
+            buffers.push_back(std::vector<char>(reinterpret_cast<const char *>(&command_id),
+                                                reinterpret_cast<const char *>(&command_id) + sizeof(command_id)));
+            logger.info(L"Sending request with command ID: " + std::to_wstring(command_id));
+            logger.info(L"Sending request with command ID HEX: " + Core::KeyToHexW(reinterpret_cast<const char *>(&command_id), sizeof(command_id)));
+            buffers.push_back(std::vector<char>(reinterpret_cast<const char *>(execPath.data()),
+                                                reinterpret_cast<const char *>(execPath.data()) + execPath.size() * sizeof(wchar_t)));
             buffers.push_back(std::vector<char>(payload, payload + payloadSize));
-            pipe.write(Core::PipeElement::kMessageType_Request, command_id, buffers);
+            pipe.write(Core::PipeElement::kMessageType_Request, buffers);
 
             int messageType = 0;
             retcode = pipe.read_utils(
                 [&](int msg_type, const char *buffer, uint32_t size)
                 {
-                    if (msg_type == command_id + 1)
-                    { // corresponding response message  messageType = msg_type;
-                        memcpy(outBuffer, buffer, size);
-                        outBufferSize = size;
-                        return true;
-                    }
-                    else if (msg_type == Core::PipeElement::kMessageType_Text)
+                    if (msg_type == Core::PipeElement::kMessageType_Text)
                     {
                         std::wstring str(reinterpret_cast<const wchar_t *>(buffer), size / sizeof(wchar_t));
-                        logger.info(L"Received TEXT: " + str);
+                        logger.info(L"TX: " + str);
                     }
                     else if (msg_type == Core::PipeElement::kMessageType_Response)
                     {
-                        Core::PipeElement::Response requestOrResponse(const_cast<char *>(buffer), size);
-                        int command_id = requestOrResponse.get_command_id();
-                        char* payload = requestOrResponse.get_payload();
-                        int payload_size = requestOrResponse.get_payload_size();
+                        Core::PipeElement::Response response(const_cast<char *>(buffer), size);
+                        int command_id = response.get_command_id();
+                        char* payload = response.get_payload();
+                        int payload_size = response.get_payload_size();
                         logger.info(L"Received RESPONSE for command ID: " + std::to_wstring(command_id));
                         logger.info(L"Payload size: " + std::to_wstring(payload_size));
-                        logger.info(L"Payload (hex): " + Core::KeyToHexW(reinterpret_cast<const wchar_t *>(payload), payload_size / sizeof(wchar_t)));
+                        logger.info(L"Payload (hex): " + Core::KeyToHexW(reinterpret_cast<const char *>(payload), payload_size));
                     }
                     else
                     {

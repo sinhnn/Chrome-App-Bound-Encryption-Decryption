@@ -63,7 +63,7 @@ namespace Core {
         return result;
     }
 
-    inline std::wstring KeyToHexW(const wchar_t *key, size_t length)
+    inline std::wstring KeyToHexW(const char *key, size_t length)
     {
         std::wstring hex;
         for (size_t i = 0; i < length; i++)
