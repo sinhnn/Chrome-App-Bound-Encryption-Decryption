@@ -17,6 +17,11 @@ namespace Core
         virtual uint32_t get_size() const = 0;
     };
 
+    struct Buffer {
+        uint32_t size;
+        void* ptr;
+    };
+
     struct Request : public ISerializable
     {
         virtual ~Request() = default;
@@ -106,6 +111,8 @@ namespace Core
         int write(int message_type, std::vector<std::vector<char>> buffers);
         int write(int message_type, const ISerializable& serializable);
         int write(int message_type, std::vector<ISerializable*> serializables);
+        int write(int message_type, std::vector<Buffer> buffers);
+        int write(int message_type, std::vector<Buffer*> buffers);
 
         int send_text(std::wstring message);
         int register_handler(int message_type, std::function<void(const char* buffer, uint32_t size)> handler);
