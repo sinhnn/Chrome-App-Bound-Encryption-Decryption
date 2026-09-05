@@ -14,6 +14,7 @@ namespace Core
     {
         virtual ~ISerializable() = default;
         virtual int serialize_to(char* out_buffer, uint32_t& out_size) const = 0;
+        virtual int deserialize_from(const char* in_buffer, uint32_t in_size) = 0;
         virtual uint32_t get_size() const = 0;
     };
 
@@ -22,69 +23,144 @@ namespace Core
         void* ptr;
     };
 
-    struct Request : public ISerializable
-    {
-        virtual ~Request() = default;
-        int serialize_to(char* out_buffer, uint32_t& out_size) const override {
-            uint32_t offset = 0;
-            memcpy(out_buffer + offset, &command_id, sizeof(int));
-            offset += sizeof(int);
-            for (const auto& arg : args) {
-                uint32_t arg_size = static_cast<uint32_t>(arg.size());
-                memcpy(out_buffer + offset, &arg_size, sizeof(uint32_t));
-                offset += sizeof(uint32_t);
-                memcpy(out_buffer + offset, arg.data(), arg_size);
-                offset += arg_size;
+    // [number_item][offset0][offset1]...[offset_n-1][??offset_n][item_0][item_1]...[item_n-1]
+    class MemoryLayout {
+        public:
+        MemoryLayout(char* ptr, uint32_t size) : ptr_(ptr), size_(size) {
+            cached_number_items_ =  *reinterpret_cast<const uint32_t*>(ptr);
+            if (cached_number_items_ == 0) {
+                throw std::invalid_argument("MemoryLayout must contain at least one item");
             }
-            out_size = offset;
-            return 0;
-        }
-        uint32_t get_size() const override {
-            uint32_t total_size = sizeof(int); // Size of command_id
-            for (const auto& arg : args) {
-                total_size += sizeof(uint32_t); // Size of each argument's length
-                total_size += static_cast<uint32_t>(arg.size()); // Size of each argument's data
-            }
-            return total_size;
         }
 
-        int command_id;
-        std::vector<std::vector<char>> args;
+        MemoryLayout (const Buffer& buffer) : MemoryLayout(static_cast<char*>(buffer.ptr), buffer.size) {}
+        MemoryLayout (const Buffer* buffer) : MemoryLayout(static_cast<char*>(buffer->ptr), buffer->size) {}
+
+        uint32_t get_number_items() const {
+            return cached_number_items_;
+        }
+
+        uint32_t get_item_offset(uint32_t index) const {
+            if (index >= cached_number_items_) {
+                throw std::out_of_range("Index out of range");
+            }
+            return *reinterpret_cast<const uint32_t*>(ptr_ + sizeof(uint32_t) + index * sizeof(uint32_t));
+        }
+
+        uint32_t get_item_size(uint32_t index) const {
+            if (index >= cached_number_items_) {
+                throw std::out_of_range("Index out of range");
+            }
+
+            return index == cached_number_items_ - 1 ? size_ - get_item_offset(index) : get_item_offset(index + 1) - get_item_offset(index);
+        }
+
+        Buffer get_item(uint32_t index) const {
+            Buffer buffer;
+            buffer.size = get_item_size(index);
+            buffer.ptr = ptr_ + get_item_offset(index);
+            return buffer;
+        }
+
+        char* get_ptr_item(uint32_t index) const {
+            if (index >= cached_number_items_) {
+                throw std::out_of_range("Index out of range");
+            }
+            return ptr_ + get_item_offset(index);
+        }
+
+        private:
+            char* ptr_;
+            uint32_t size_;
+            // cached data for item offsets
+            uint32_t cached_number_items_ {0};
     };
 
-    class Response {
-    public:
-        Response(const char* buffer, uint32_t size) {
-            // Implement deserialization logic for Response
-            this->buffer_ = buffer;
-            this->size_ = size;
-        }
+    // struct Request__struct
+    // {
+    //     int request_id;
+    //     int command_id;
+    //     std::vector<Buffer> args;
+    // };
 
-        int get_command_id() const {
-            return *reinterpret_cast<const int*>(buffer_);
-        }
+    // struct Response__struct
+    // {
+    //     int request_id;
+    //     int status_code;
+    //     std::vector<Buffer> args;
+    // };
 
-        std::vector<std::vector<char>> get_args() {
-            if (initialized_args_) {
-                return args_;
-            }
-            uint32_t offset = sizeof(int); // Skip command_id
-            while (offset < size_) {
-                uint32_t arg_size = *reinterpret_cast<const uint32_t*>(buffer_ + offset);
-                offset += sizeof(uint32_t);
-                std::vector<char> arg(buffer_ + offset, buffer_ + offset + arg_size);
-                args_.push_back(arg);
-                offset += arg_size;
-            }
-            initialized_args_ = true;
-            return args_;
-        }
-    protected:
-        uint32_t size_;
-        const char* buffer_;
-        std::vector<std::vector<char>> args_;
-        bool initialized_args_ = false;
-    };
+    // class Request__block {
+    //     public:
+    //         Request__block(char* ptr, uint32_t size) : ptr(ptr), size(size) {}
+
+    //         int get_request_id() const {
+    //             return *reinterpret_cast<const int*>(ptr);
+    //         }
+
+    //         int get_command_id() const {
+    //             return *reinterpret_cast<const int*>(ptr + sizeof(int));
+    //         }
+
+    //         const char* get_args_ptr() const {
+    //             return ptr + 2 * sizeof(int);
+    //         }
+
+    //         std::vector<Buffer> get_args() const {
+    //             std::vector<Buffer> args;
+    //             const char* args_ptr = get_args_ptr();
+    //             uint32_t remaining_size = size - 2 * sizeof(int);
+    //             while (remaining_size > 0) {
+    //                 uint32_t arg_size = *reinterpret_cast<const uint32_t*>(args_ptr);
+    //                 args_ptr += sizeof(uint32_t);
+    //                 args.push_back({arg_size, const_cast<char*>(args_ptr)});
+    //                 args_ptr += arg_size;
+    //                 remaining_size -= sizeof(uint32_t) + arg_size;
+    //             }
+    //             return args;
+    //         }
+
+    //         int get_size() const { return size; }
+    //         char* get_ptr() const { return ptr; }
+
+    //     private:
+    //         char* ptr;
+    //         uint32_t size;
+    // };
+
+    // class Response {
+    // public:
+    //     Response(const char* buffer, uint32_t size) {
+    //         // Implement deserialization logic for Response
+    //         this->buffer_ = buffer;
+    //         this->size_ = size;
+    //     }
+
+    //     int get_command_id() const {
+    //         return *reinterpret_cast<const int*>(buffer_);
+    //     }
+
+    //     std::vector<std::vector<char>> get_args() {
+    //         if (initialized_args_) {
+    //             return args_;
+    //         }
+    //         uint32_t offset = sizeof(int); // Skip command_id
+    //         while (offset < size_) {
+    //             uint32_t arg_size = *reinterpret_cast<const uint32_t*>(buffer_ + offset);
+    //             offset += sizeof(uint32_t);
+    //             std::vector<char> arg(buffer_ + offset, buffer_ + offset + arg_size);
+    //             args_.push_back(arg);
+    //             offset += arg_size;
+    //         }
+    //         initialized_args_ = true;
+    //         return args_;
+    //     }
+    // protected:
+    //     uint32_t size_;
+    //     const char* buffer_;
+    //     std::vector<std::vector<char>> args_;
+    //     bool initialized_args_ = false;
+    // };
 
 
     class PipeElement
